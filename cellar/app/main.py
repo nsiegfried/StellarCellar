@@ -657,10 +657,11 @@ def write_settings(body: SettingsBody, session: Session = Depends(get_session)):
 def list_locations(session: Session = Depends(get_session)):
     out = []
     for loc in session.exec(select(Location).order_by(Location.name)).all():
-        count = len(session.exec(
+        bottles = session.exec(
             select(Bottle).where(Bottle.location_id == loc.id, Bottle.status == "in_cellar")
-        ).all())
-        out.append({"code": loc.code, "name": loc.name, "count": count,
+        ).all()
+        ready = sum(1 for b in bottles if candidate(session, b)["status"] in ("ready", "drink_soon"))
+        out.append({"code": loc.code, "name": loc.name, "count": len(bottles), "ready": ready,
                     "holding": loc.code == HOLDING_CODE})
     return out
 

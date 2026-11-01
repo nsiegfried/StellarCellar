@@ -5,66 +5,120 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Stellar Cellar</title>
 <style>
-:root{--bg:#faf7f2;--card:#fff;--ink:#2b2420;--muted:#7a6f68;--line:#e6ddd3;--wine:#7b1e3a;--ok:#2e7d32;--warn:#c77700;--bad:#b3261e;--grey:#8a8a8a}
-@media(prefers-color-scheme:dark){:root{--bg:#1a1614;--card:#241f1c;--ink:#f2ebe4;--muted:#b3a79e;--line:#3a322d;--wine:#d6557a}}
+:root{
+  --bg:#faf7f2;--card:#fff;--ink:#2b2420;--muted:#6f655e;--line:#e6ddd3;--wine:#7b1e3a;--wine-soft:#f6e6ea;
+  --ok:#2e7d32;--warn:#c77700;--bad:#b3261e;--grey:#8a8a8a;--gold:#b8860b;
+  --fs:17px;--fs-sub:15px;--fs-badge:12px;--fs-h:17px;--fs-title:20px;--nav-h:60px;--scale:1
+}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1614;--card:#241f1c;--ink:#f2ebe4;--muted:#b3a79e;--line:#3a322d;--wine:#d6557a;--wine-soft:#3a2229}}
+html[data-size="large"]{--fs:22px;--fs-sub:19px;--fs-badge:15px;--fs-h:22px;--fs-title:26px;--nav-h:76px}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);padding-top:env(safe-area-inset-top)}
-main{padding:8px 14px 96px;max-width:720px;margin:0 auto}
-h1{font-size:22px;margin:6px 0 14px}
-#top{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;gap:6px;padding:10px 8px 6px;max-width:720px;margin:0 auto}
-#top .tbtn{background:transparent;color:var(--wine);padding:8px 10px;font-size:15px;font-weight:600;min-width:44px}
-#top .ttl{flex:1;text-align:center;font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#top .spacer{min-width:44px}
-#sheetBg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:20}
-#sheet{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:75vh;overflow:auto;z-index:21;display:none;max-width:720px;margin:0 auto}
-#sheet h3{margin:0 0 12px;font-size:17px}
-#sheet .opt{display:block;width:100%;text-align:left;background:var(--bg);color:var(--ink);border:1px solid var(--line);margin-bottom:8px;padding:14px;border-radius:12px;font-weight:500}
-#sheet .opt small{color:var(--muted);display:block;font-weight:400}
-h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 8px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
-.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.title{font-weight:600}
-.sub{color:var(--muted);font-size:13px}
-.badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;color:#fff;white-space:nowrap}
-.ready{background:var(--ok)}.drink_soon{background:var(--warn)}.past_peak{background:var(--bad)}.too_young,.unknown{background:var(--grey)}
-button{font:inherit;border:0;border-radius:12px;padding:12px 16px;cursor:pointer;background:var(--wine);color:#fff;font-weight:600}
-button.ghost{background:transparent;color:var(--wine);border:1px solid var(--line)}
-button.big{width:100%;font-size:18px;padding:16px}
-input,select,textarea{font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);margin:4px 0 10px}
-label{font-size:13px;color:var(--muted)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:flex-end;padding:6px 0 calc(8px + env(safe-area-inset-bottom))}
-nav a{flex:1;text-align:center;text-decoration:none;color:var(--muted);font-size:12px;padding:6px 0}
-nav a.on{color:var(--wine);font-weight:700}
-nav a.scan{flex:0 0 84px;margin-top:-28px}
-nav a.scan.on span{outline:3px solid var(--bg);box-shadow:0 0 0 5px var(--wine),0 4px 14px rgba(0,0,0,.25)}
-nav a.scan span{display:inline-block;width:66px;height:66px;line-height:66px;border-radius:50%;background:var(--wine);color:#fff;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25)}
-#toast{position:fixed;left:14px;right:14px;bottom:92px;background:var(--ink);color:var(--bg);padding:14px;border-radius:12px;display:none;justify-content:space-between;align-items:center;gap:12px;z-index:9}
-#toast button{background:var(--bg);color:var(--ink);padding:8px 12px}
-video{width:100%;border-radius:14px;background:#000;max-height:60vh}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:var(--fs);line-height:1.35;background:var(--bg);color:var(--ink);padding-top:env(safe-area-inset-top)}
+button{font:inherit;border:0;border-radius:14px;padding:14px 18px;cursor:pointer;background:var(--wine);color:#fff;font-weight:600;min-height:48px}
+button.ghost{background:transparent;color:var(--wine);border:1.5px solid var(--line)}
+button.danger{background:transparent;color:var(--bad);border:1.5px solid var(--line)}
+button.big{width:100%;font-size:calc(var(--fs) * 1.1);padding:16px}
+button:disabled{opacity:.6}
+input,select,textarea{font:inherit;width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);margin:4px 0 12px;min-height:48px}
+label{font-size:var(--fs-sub);color:var(--muted)}
+h2{font-size:var(--fs-h);font-weight:700;margin:22px 0 10px;color:var(--ink)}
+h2 .sub{font-weight:400}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.col{min-width:0;flex:1}
+.title{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.sub{color:var(--muted);font-size:var(--fs-sub)}
+.meta{color:var(--muted);font-size:var(--fs-sub);display:flex;gap:10px;flex-wrap:wrap;margin-top:3px}
+.meta b{color:var(--ink)}
+.badge{font-size:var(--fs-badge);font-weight:700;padding:5px 10px;border-radius:999px;color:#fff;white-space:nowrap;flex:none}
+.ready{background:var(--ok)}.drink_soon{background:var(--warn)}.past_peak{background:var(--bad)}.too_young,.unknown{background:var(--grey)}.opened{background:var(--grey)}
+.score{font-size:var(--fs-badge);font-weight:700;padding:5px 10px;border-radius:8px;color:#fff;white-space:nowrap;flex:none}
+.s90{background:var(--gold)}.s80{background:var(--ok)}.s70{background:var(--grey)}.s0{background:var(--bad)}.sv{background:var(--wine)}
 .tap{cursor:pointer}
-.empty{color:var(--muted);text-align:center;padding:20px}
-.pick{border-left:4px solid var(--wine)}
-.summary{display:flex;gap:10px;flex-wrap:wrap}
-.summary .card{flex:1;min-width:90px;text-align:center;margin:0}
-.summary .n{font-size:24px;font-weight:700}
+.tap:active{background:var(--wine-soft)}
+.empty{color:var(--muted);text-align:center;padding:22px 14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:var(--fs-sub)}
+.kv dt{color:var(--muted)}.kv dd{margin:0}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px}
+.chip{background:var(--card);border:1.5px solid var(--line);color:var(--ink);padding:9px 14px;border-radius:999px;font-weight:500;min-height:40px}
+.chip.on{background:var(--wine);border-color:var(--wine);color:#fff}
+.summary{display:flex;gap:10px}
+.summary .card{flex:1;text-align:center;margin:0;padding:12px 6px}
+.summary .n{font-size:calc(var(--fs) * 1.6);font-weight:700}
+.hero{background:linear-gradient(135deg,var(--wine),#4a1226);color:#fff;border:0;padding:18px}
+.hero .eyebrow{opacity:.85;font-size:var(--fs-sub);margin-bottom:4px}
+.hero .big{font-size:var(--fs-title);font-weight:700;line-height:1.2}
+.hero .where{opacity:.9;margin:6px 0 14px;font-size:var(--fs-sub)}
+.hero button{background:#fff;color:var(--wine)}
+.hero button.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.5)}
+.segs{display:flex;background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:3px;margin:8px 0 14px}
+.segs button{flex:1;background:transparent;color:var(--muted);padding:10px;min-height:42px;border-radius:9px}
+.segs button.on{background:var(--wine);color:#fff}
+/* top bar */
+#top{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;gap:6px;padding:10px 8px 6px;max-width:760px;margin:0 auto}
+#top .tbtn{background:transparent;color:var(--wine);padding:8px 10px;font-size:var(--fs);font-weight:600;min-width:48px;min-height:44px}
+#top .ttl{flex:1;text-align:center;font-weight:700;font-size:var(--fs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#top .spacer{min-width:48px}
+main{padding:6px 14px calc(var(--nav-h) + 24px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto}
+/* bottom nav */
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:stretch;height:calc(var(--nav-h) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-decoration:none;color:var(--muted);font-size:calc(var(--fs-sub) * .9);font-weight:500}
+nav a svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+nav a.on{color:var(--wine);font-weight:700}
+nav a.on svg{stroke-width:2.4}
+nav a.scan span.ring{width:46px;height:46px;border-radius:50%;background:var(--wine);color:#fff;display:flex;align-items:center;justify-content:center}
+nav a.scan.on span.ring{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--wine)}
+nav a.scan svg{stroke:#fff}
+/* sheet + toast */
+#sheetBg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:20}
+#sheet{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:75vh;overflow:auto;z-index:21;display:none;max-width:760px;margin:0 auto}
+#sheet h3{margin:0 0 12px;font-size:var(--fs)}
+#sheet .opt{display:block;width:100%;text-align:left;background:var(--bg);color:var(--ink);border:1.5px solid var(--line);margin-bottom:8px;padding:14px;border-radius:12px;font-weight:500}
+#sheet .opt small{color:var(--muted);display:block;font-weight:400;font-size:var(--fs-sub)}
+#toast{position:fixed;left:14px;right:14px;bottom:calc(var(--nav-h) + 14px + env(safe-area-inset-bottom));background:var(--ink);color:var(--bg);padding:14px;border-radius:14px;display:none;z-index:9;overflow:hidden}
+#toast .trow{display:flex;justify-content:space-between;align-items:center;gap:12px}
+#toast button{background:var(--bg);color:var(--ink);padding:8px 14px;min-height:40px}
+#toast .bar{position:absolute;left:0;bottom:0;height:4px;background:var(--wine);width:100%;transform-origin:left}
+@keyframes shrink{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+/* scan */
+.scanwrap{position:relative;background:#000;border-radius:16px;overflow:hidden;min-height:52vh}
+video{width:100%;height:52vh;object-fit:cover;display:block}
+.guide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.guide div{width:min(62vw,260px);height:min(62vw,260px);border:3px solid rgba(255,255,255,.85);border-radius:18px}
+.banner{background:var(--warn);color:#fff;border-radius:14px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-weight:600}
+.banner button{background:#fff;color:var(--warn);padding:8px 14px;min-height:40px}
+/* wide screens: left rail, two columns */
+@media(min-width:700px){
+  :root{--fs:20px;--fs-sub:17px;--fs-badge:14px;--fs-h:20px;--fs-title:24px}
+  body{padding-left:120px}
+  nav{top:0;bottom:0;left:0;right:auto;width:120px;height:auto;flex-direction:column;justify-content:flex-start;gap:6px;padding:calc(18px + env(safe-area-inset-top)) 8px;border-top:0;border-right:1px solid var(--line)}
+  nav a{flex:none;padding:14px 0;border-radius:12px;width:100%}
+  nav a.on{background:var(--wine-soft)}
+  nav a svg{width:30px;height:30px}
+  main{max-width:1100px;padding-bottom:30px}
+  #top{max-width:1100px}
+  .two{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}
+  .two > div{min-width:0}
+  nav a.scan.hidewide{display:none}
+}
 </style>
 </head>
 <body>
 <div id="top"></div>
 <main id="view"></main>
 <nav>
-  <a href="#/tonight" data-tab="tonight">Tonight</a>
-  <a href="#/cellar" data-tab="cellar">Cellar</a>
-  <a href="#/scan" class="scan" data-tab="scan"><span>Scan</span></a>
-  <a href="#/journal" data-tab="journal">Journal</a>
+  <a href="#/tonight" data-tab="tonight"><svg viewBox="0 0 24 24"><path d="M8 3h8l-1 7a3 3 0 0 1-6 0z"/><path d="M12 13v6M8 21h8"/></svg>Tonight</a>
+  <a href="#/cellar" data-tab="cellar"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/></svg>Cellar</a>
+  <a href="#/scan" class="scan hidewide" data-tab="scan"><span class="ring"><svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="8" y="8" width="3" height="3"/><rect x="13" y="8" width="3" height="3"/><rect x="8" y="13" width="3" height="3"/><path d="M13 13h3v3"/></svg></span>Scan</a>
+  <a href="#/journal" data-tab="journal"><svg viewBox="0 0 24 24"><path d="M4 4h12a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"/><path d="M8 4v16M18 8h2v12h-2"/></svg>Journal</a>
 </nav>
 <div id="sheetBg" onclick="closeSheet()"></div><div id="sheet"></div>
-<div id="toast"><span id="toastText"></span><button id="toastBtn"></button></div>
+<div id="toast"><div class="trow"><span id="toastText"></span><button id="toastBtn"></button></div><div class="bar" id="toastBar"></div></div>
 
 <script>
-// All requests are relative so the app works under Home Assistant Ingress.
+// ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
@@ -72,29 +126,33 @@ const api = async (path, opts={}) => {
 };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const view = document.getElementById('view');
-const STATUS = {ready:'Ready', drink_soon:'Drink soon', past_peak:'Past peak', too_young:'Wait', unknown:'No window'};
+const STATUS = {ready:'Ready', drink_soon:'Drink soon', past_peak:'Past peak', too_young:'Wait', unknown:'No window', opened:'Opened'};
 const badge = s => `<span class="badge ${esc(s)}">${STATUS[s] || esc(s)}</span>`;
+const scoreClass = s => s == null ? 'sv' : s >= 90 ? 's90' : s >= 80 ? 's80' : s >= 70 ? 's70' : 's0';
+const scoreTag = (s, v) => s != null ? `<span class="score ${scoreClass(s)}">${s}</span>` : v ? `<span class="score sv">${esc(v)}</span>` : '';
 const money = (v, cur) => v == null ? '' : new Intl.NumberFormat(undefined,{style:'currency',currency:cur||'USD',maximumFractionDigits:0}).format(v);
+let CUR = 'USD';
+if (localStorage.getItem('sc_size') === 'large') document.documentElement.dataset.size = 'large';
 
 let toastTimer;
-function toast(text, btnLabel, onClick){
-  const t = document.getElementById('toast'), b = document.getElementById('toastBtn');
+function toast(text, btnLabel, onClick, ms = 10000){
+  const t = document.getElementById('toast'), b = document.getElementById('toastBtn'), bar = document.getElementById('toastBar');
   document.getElementById('toastText').textContent = text;
   b.style.display = btnLabel ? '' : 'none'; b.textContent = btnLabel || '';
   b.onclick = () => { onClick && onClick(); hideToast(); };
-  t.style.display = 'flex'; clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 10000);
+  bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = `shrink ${ms}ms linear forwards`;
+  t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, ms);
 }
 function hideToast(){ document.getElementById('toast').style.display = 'none'; }
+async function busy(btn, fn){ if (!btn || btn.disabled) return; const old = btn.textContent; btn.disabled = true; btn.textContent = 'Working…'; try { await fn(); } finally { btn.disabled = false; btn.textContent = old; } }
 
-// ---------- Sheet (replaces browser prompt dialogs) ----------
+// ---------- sheet ----------
 function openSheet(html){ document.getElementById('sheet').innerHTML = html; document.getElementById('sheet').style.display = 'block'; document.getElementById('sheetBg').style.display = 'block'; }
 function closeSheet(){ document.getElementById('sheet').style.display = 'none'; document.getElementById('sheetBg').style.display = 'none'; }
 function choose(title, options){
-  // options: [{label, sub, value}] -> resolves value or null
   return new Promise(res => {
-    window.__chooseRes = v => { closeSheet(); res(v); };
+    window.__chooseRes = v => { closeSheet(); res(v); }; window.__chooseOpts = options;
     openSheet(`<h3>${esc(title)}</h3>${options.map((o,i) => `<button class="opt" onclick="__chooseRes(__chooseOpts[${i}].value)">${esc(o.label)}${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</button>`).join('')}<button class="ghost" style="width:100%" onclick="__chooseRes(null)">Cancel</button>`);
-    window.__chooseOpts = options;
   });
 }
 function askText(title, placeholder){
@@ -106,30 +164,43 @@ function askText(title, placeholder){
   });
 }
 
-// ---------- Top bar ----------
-const PARENT = {bottle:'#/cellar', location:'#/cellar', add:'#/cellar', settings:'#/tonight', scan:'#/tonight'};
+// ---------- top bar ----------
 function goBack(parent){ if (window.__navDepth > 0) { window.__navDepth--; history.back(); } else location.hash = parent; }
-function topbar(title, {back, action} = {}){
-  const t = document.getElementById('top');
-  t.innerHTML = (back ? `<button class="tbtn" onclick="goBack('${back}')">‹ Back</button>` : '<span class="spacer"></span>')
-    + `<div class="ttl">${esc(title)}</div>`
-    + (action ? (action.icon ? `<button class="tbtn" onclick="${action.onclick}" aria-label="${esc(action.label)}">${action.icon}</button>` : '<span class="spacer"></span>') : `<button class="tbtn" onclick="location.hash='#/settings'" aria-label="Settings">⚙︎</button>`);
+function topbar(title, {back, action, noGear} = {}){
+  const right = action ? `<button class="tbtn" onclick="${action.onclick}" aria-label="${esc(action.label)}">${action.icon}</button>`
+              : noGear ? '<span class="spacer"></span>'
+              : `<button class="tbtn" onclick="location.hash='#/settings'" aria-label="Settings">⚙︎</button>`;
+  document.getElementById('top').innerHTML = (back ? `<button class="tbtn" onclick="goBack('${back}')">‹ Back</button>` : '<span class="spacer"></span>') + `<div class="ttl">${esc(title)}</div>` + right;
 }
 
-const bottleRow = (c, cur) => `
+// ---------- shared rows ----------
+const bottleRow = c => `
   <div class="card tap" onclick="location.hash='#/bottle/${esc(c.code)}'">
-    <div class="row"><div><div class="title">${esc(c.label)}${c.count > 1 ? ` <span class="sub">×${c.count}</span>` : ''}</div>
-      <div class="sub">${esc(c.location)}${c.price != null ? ' · ' + money(c.price, cur) : ''}${c.score != null ? ` · <b>${c.score}</b>${c.taster ? ' ' + esc(c.taster) : ''}` : ''}${c.reason ? '<br>' + esc(c.reason) : ''}</div></div>
-      ${badge(c.status)}</div>
+    <div class="row"><div class="col">
+      <div class="title">${esc(c.label)}${c.count > 1 ? ` <span class="sub">×${c.count}</span>` : ''}</div>
+      <div class="meta"><span>${esc(c.location)}</span>${c.price != null ? `<span>${money(c.price, CUR)}</span>` : ''}${c.score != null ? `<span><b>${c.score}</b>${c.taster ? ' ' + esc(c.taster) : ''}</span>` : ''}</div>
+      ${c.reason ? `<div class="sub" style="margin-top:4px">${esc(c.reason)}</div>` : ''}
+    </div>${badge(c.status)}</div>
   </div>`;
+const section = (title, items, empty) => `<h2>${title}${items.length ? ` <span class="sub">${items.length}</span>` : ''}</h2>` + (items.length ? items.map(bottleRow).join('') : `<div class="card empty">${empty}</div>`);
+const collapsed = (title, items, hash, empty) => items.length ? `<div class="card tap row" onclick="location.hash='${hash}'"><div class="title">${title}</div><div class="sub">${items.length} wine${items.length===1?'':'s'} ›</div></div>` : `<div class="card row"><div class="title" style="color:var(--muted)">${title}</div><div class="sub">${empty}</div></div>`;
 
 // ---------- Tonight ----------
+let sugg = {budget:null, occasion:''};
 async function tonight(){
   const [p, s] = await Promise.all([api('picks'), api('summary')]);
-  const cur = p.currency;
-  const section = (title, items, empty) => `<h2>${title}</h2>` + (items.length ? items.map(c => bottleRow(c, cur)).join('') : `<div class="card empty">${empty}</div>`);
+  CUR = p.currency;
+  const hero = p.under_high[0] || p.special[0] || p.under_low[0] || p.use_soon[0];
   topbar('Tonight');
-  view.innerHTML = `
+  const heroHtml = hero ? `
+    <div class="card hero">
+      <div class="eyebrow">Tonight we'd open</div>
+      <div class="big">${esc(hero.label)}</div>
+      <div class="where">${esc(hero.location)}${hero.price != null ? ' · ' + money(hero.price, CUR) : ''}${hero.score != null ? ' · ' + hero.score + ' points' : ''} · ${STATUS[hero.status]}</div>
+      <div class="grid2"><button onclick="location.hash='#/bottle/${esc(hero.code)}'">Open this</button><button class="ghost" onclick="document.getElementById('food').focus()">Something else</button></div>
+    </div>` : s.total === 0 ? `<div class="card hero"><div class="big">Welcome to your cellar</div><div class="where">Add your first bottle: tap Scan and photograph the label.</div><button onclick="location.hash='#/add'">Add a bottle</button></div>` : '';
+  const left = `
+    ${heroHtml}
     <div class="summary">
       <div class="card tap" onclick="location.hash='#/list/all'"><div class="n">${s.total}</div><div class="sub">bottles ›</div></div>
       <div class="card tap" onclick="location.hash='#/list/ready'"><div class="n">${s.ready}</div><div class="sub">ready ›</div></div>
@@ -137,39 +208,46 @@ async function tonight(){
     </div>
     <h2>Ask for a suggestion</h2>
     <div class="card">
-      <label>What are we eating?</label><input id="food" placeholder="Roast chicken, pizza, steak…">
-      <div class="grid2"><div><label>Budget</label><select id="budget">
-        <option value="">Any</option><option value="${p.thresholds.low}">Under ${money(p.thresholds.low,cur)}</option><option value="${p.thresholds.high}">Under ${money(p.thresholds.high,cur)}</option></select></div>
-        <div><label>Occasion</label><input id="occasion" placeholder="Weeknight, guests…"></div></div>
-      <button class="big" onclick="recommend()">Suggest</button>
+      <input id="food" placeholder="What are we eating?">
+      <div class="chips" id="budgetChips">
+        ${[['Any budget',null],['Under ' + money(p.thresholds.low,CUR), p.thresholds.low],['Under ' + money(p.thresholds.high,CUR), p.thresholds.high]].map(([l,v]) => `<button class="chip ${sugg.budget===v?'on':''}" onclick="setBudget(${v===null?'null':v}, this)">${l}</button>`).join('')}
+      </div>
+      <div class="chips" id="occChips">
+        ${['Weeknight','Guests','Special'].map(o => `<button class="chip ${sugg.occasion===o?'on':''}" onclick="setOcc('${o}', this)">${o}</button>`).join('')}
+      </div>
+      <button class="big" id="suggestBtn" onclick="recommend()">Suggest</button>
       <div id="recs"></div>
-    </div>
-    ${section('Under ' + money(p.thresholds.low,cur), p.under_low, 'No priced bottles in this range are ready.')}
-    ${section('Under ' + money(p.thresholds.high,cur), p.under_high, 'No priced bottles in this range are ready.')}
-    ${section('Special occasion', p.special, 'Mark a wine as special or add a bottle over ' + money(p.thresholds.high,cur) + '.')}
-    ${section('Use soon', p.use_soon, 'Nothing is closing its window soon.')}
-    ${section('Hold', p.hold, 'Nothing is waiting to come of age.')}`;
+    </div>`;
+  const right = `
+    ${section('Under ' + money(p.thresholds.low,CUR), p.under_low, 'No priced bottles in this range are ready.')}
+    ${section('Under ' + money(p.thresholds.high,CUR), p.under_high, 'No priced bottles in this range are ready.')}
+    ${section('Special occasion', p.special, 'Mark a wine as special, or add one over ' + money(p.thresholds.high,CUR) + '.')}
+    <h2>Later</h2>
+    ${collapsed('Use soon', p.use_soon, '#/list/drink_soon', 'nothing closing')}
+    ${collapsed('Waiting to come of age', p.hold, '#/list/too_young', 'nothing waiting')}`;
+  view.innerHTML = `<div class="two"><div>${left}</div><div>${right}</div></div>`;
 }
+function setBudget(v, el){ sugg.budget = v; el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); el.classList.add('on'); }
+function setOcc(o, el){ sugg.occasion = sugg.occasion === o ? '' : o; el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); if (sugg.occasion) el.classList.add('on'); }
 async function recommend(){
-  const recs = document.getElementById('recs'); recs.innerHTML = '<div class="empty">Thinking…</div>';
-  const budget = document.getElementById('budget').value;
-  try {
-    const r = await api('recommend', {method:'POST', body: JSON.stringify({food: food.value, occasion: occasion.value, budget_max: budget ? Number(budget) : null})});
-    recs.innerHTML = `<p>${esc(r.summary)}</p>` + r.picks.map(c => bottleRow(c)).join('') + (r.source === 'rules' ? '<div class="sub">Rule-based picks (no API key set or Claude unavailable).</div>' : '');
-  } catch (e) { recs.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  const recs = document.getElementById('recs');
+  await busy(document.getElementById('suggestBtn'), async () => {
+    recs.innerHTML = '<div class="empty">Thinking…</div>';
+    try {
+      const r = await api('recommend', {method:'POST', body: JSON.stringify({food: document.getElementById('food').value, occasion: sugg.occasion, budget_max: sugg.budget})});
+      recs.innerHTML = `<p>${esc(r.summary)}</p>` + r.picks.map(bottleRow).join('') + (r.source === 'rules' ? '<div class="sub">Rule-based picks (no API key set or Claude unavailable).</div>' : '');
+    } catch (e) { recs.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  });
 }
 
-// ---------- Status lists ----------
+// ---------- status lists ----------
 const LIST_TITLES = {all:'All bottles', ready:'Ready now', drink_soon:'Drink soon', too_young:'Waiting', past_peak:'Past peak', unknown:'No window'};
 async function statusList(status){
   topbar(LIST_TITLES[status] || 'Bottles', {back:'#/tonight'});
   const rows = await api('bottles?status=' + encodeURIComponent(status));
-  const s = await api('settings');
-  const groups = {};
-  rows.forEach(c => { (groups[c.label] = groups[c.label] || {...c, count:0}).count++; });
+  const groups = {}; rows.forEach(c => { (groups[c.label] = groups[c.label] || {...c, count:0}).count++; });
   const list = Object.values(groups);
-  view.innerHTML = `<p class="sub">${rows.length} bottle${rows.length === 1 ? '' : 's'}, ${list.length} wine${list.length === 1 ? '' : 's'}</p>`
-    + (list.map(c => bottleRow(c, s.currency)).join('') || '<div class="card empty">Nothing here.</div>');
+  view.innerHTML = `<p class="sub">${rows.length} bottle${rows.length === 1 ? '' : 's'}, ${list.length} wine${list.length === 1 ? '' : 's'}</p>` + (list.map(bottleRow).join('') || '<div class="card empty">Nothing here.</div>');
 }
 
 // ---------- Cellar ----------
@@ -177,37 +255,43 @@ let showValue = false;
 async function toggleValue(){
   showValue = !showValue;
   const box = document.getElementById('valueBox'); const btn = document.getElementById('valueBtn');
-  if (showValue) { const s = await api('summary'); box.innerHTML = `<div class="card" style="text-align:center"><div class="n" style="font-size:26px;font-weight:700">${money(s.value, s.currency)}</div><div class="sub">estimated value of ${s.total} bottles in the cellar</div></div>`; btn.textContent = 'Hide value'; }
+  if (showValue) { const s = await api('summary'); box.innerHTML = `<div class="card" style="text-align:center"><div style="font-size:calc(var(--fs) * 1.6);font-weight:700">${money(s.value, s.currency)}</div><div class="sub">estimated value of ${s.total} bottles in the cellar</div></div>`; btn.textContent = 'Hide value'; }
   else { box.innerHTML = ''; btn.textContent = 'Show cellar value'; }
 }
 async function cellar(){
-  const [locs, inc] = await Promise.all([api('locations'), api('incoming')]);
-  showValue = false;
+  const [locs, inc, st] = await Promise.all([api('locations'), api('incoming'), api('settings')]);
+  CUR = st.currency; showValue = false;
   topbar('Cellar', {action:{icon:'＋', label:'Add bottles', onclick:"location.hash='#/add'"}});
+  const total = locs.reduce((a,l) => a + l.count, 0);
   view.innerHTML = `
     <input id="q" placeholder="Search producer or wine" oninput="searchDebounced()"><div id="results"></div>
-    <div id="valueBox"></div><button class="ghost" id="valueBtn" style="width:100%" onclick="toggleValue()">Show cellar value</button>
-    <h2>Places</h2>${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">(holding place)</span>' : ''}</div><div class="sub">${l.count} bottles</div></div></div>`).join('') || '<div class="card empty">No places yet.</div>'}
+    ${total === 0 ? '<div class="card empty">No bottles yet. Tap + to add your first, or Scan to read a label.</div>' : ''}
+    <h2>Places</h2>
+    ${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="col"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">holding</span>' : ''}</div><div class="meta"><span>${l.count} bottle${l.count===1?'':'s'}</span>${l.ready != null ? `<span>${l.ready} ready</span>` : ''}</div></div><span class="sub">›</span></div></div>`).join('')}
     <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
-    ${inc.length ? `<h2>On order (${inc.length})</h2>${inc.map(c => bottleRow(c)).join('')}` : ''}
-    ${locs.length ? `<p class="sub">Print place labels: <a href="api/labels?codes=${locs.map(l=>l.code).join(',')}" target="_blank">open sheet</a></p>` : ''}`;
+    ${inc.length ? `<h2>On order <span class="sub">${inc.length}</span></h2>${inc.map(bottleRow).join('')}` : ''}
+    <h2>More</h2>
+    <div id="valueBox"></div><button class="ghost" id="valueBtn" style="width:100%" onclick="toggleValue()">Show cellar value</button>
+    ${locs.length ? `<p class="sub" style="text-align:center">Print place labels: <a href="api/labels?codes=${locs.map(l=>l.code).join(',')}&fmt=neck" target="_blank">open sheet</a></p>` : ''}`;
 }
 let st; function searchDebounced(){ clearTimeout(st); st = setTimeout(search, 250); }
 async function search(){
   const q = document.getElementById('q').value.trim(); const box = document.getElementById('results');
   if (!q) { box.innerHTML = ''; return; }
   const r = await api('search?q=' + encodeURIComponent(q));
-  box.innerHTML = r.length ? r.map(c => bottleRow(c)).join('') : '<div class="card empty">No bottles match.</div>';
+  const groups = {}; r.forEach(c => { (groups[c.label] = groups[c.label] || {...c, count:0}).count++; });
+  box.innerHTML = Object.values(groups).map(bottleRow).join('') || '<div class="card empty">No bottles match.</div>';
 }
 async function addPlace(){
   const name = await askText('Name the place', 'Kitchen fridge, Rack A…'); if (!name) return;
   await api('locations', {method:'POST', body: JSON.stringify({name})}); toast(`Added ${name}.`); cellar();
 }
 
-// ---------- Add ----------
+// ---------- Add bottles ----------
+let pendingLabelFile = null;
 function addForm(){
   const y = new Date().getFullYear();
-  topbar('Add bottles', {back:'#/cellar'});
+  topbar('Add bottles', {back:'#/cellar', noGear:true});
   view.innerHTML = `
     <input type="file" id="labelFile" accept="image/*" capture="environment" style="display:none" onchange="scanLabelFile(this.files[0])">
     <button class="big ghost" onclick="labelFile.click()">📷 Photo the label to fill this in</button>
@@ -221,17 +305,16 @@ function addForm(){
     <div class="grid2"><div><label>How many</label><input id="qty" type="number" value="1" min="1" max="24"></div>
       <div><label>Price paid (each)</label><input id="price" type="number" step="0.01"></div></div>
     <div class="grid2"><div><label>Drink from (year)</label><input id="from" type="number"></div><div><label>Drink until (year)</label><input id="to" type="number"></div></div>
-    <label>Place</label><select id="loc"><option value="">Decide later</option></select>
-    <label><input type="checkbox" id="special" style="width:auto;margin-right:8px">Special occasion wine</label><br><br>
+    <label>Place</label><select id="loc"></select>
+    <label style="display:flex;align-items:center;gap:10px;margin:4px 0 14px"><input type="checkbox" id="special" style="width:auto;min-height:0;margin:0">Special occasion wine</label>
     <button class="big" id="saveBtn" onclick="saveBottles()">Save</button><div id="addMsg"></div></div>`;
   Promise.all([api('locations'), api('settings')]).then(([ls, st]) => {
-    loc.innerHTML = '';
+    const loc = document.getElementById('loc'); loc.innerHTML = '';
     ls.forEach(l => loc.add(new Option(l.holding ? l.name + ' (holding place)' : l.name, l.code)));
     loc.value = st.default_location_code;
   });
   if (pendingLabelFile) { const f = pendingLabelFile; pendingLabelFile = null; scanLabelFile(f); }
 }
-let pendingLabelFile = null;
 async function downsize(file, maxEdge = 1600){
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
@@ -240,27 +323,9 @@ async function downsize(file, maxEdge = 1600){
   return c.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
 async function readLabel(file, msgId){
-  const msg = document.getElementById(msgId); msg.textContent = 'Reading the label…';
+  document.getElementById(msgId).textContent = 'Reading the label…';
   const image = await downsize(file);
   return api('scan-label', {method:'POST', body: JSON.stringify({image, media_type:'image/jpeg'})});
-}
-async function scanTastingLabel(file){
-  if (!file) return;
-  const msg = document.getElementById('tscanMsg');
-  try {
-    const d = await readLabel(file, 'tscanMsg');
-    const name = [d.producer, d.name].filter(Boolean).join(' ');
-    if (name) document.getElementById('tw').value = name;
-    if (d.vintage) document.getElementById('tv').value = d.vintage;
-    const bits = [`Read with ${d.confidence} confidence.`];
-    if (d.region) bits.push(d.region + (d.country ? ', ' + d.country : ''));
-    if (d.varietals.length) bits.push('Grapes: ' + d.varietals.join(', '));
-    if (d.note) bits.push(d.note);
-    msg.innerHTML = bits.map(esc).join(' · ');
-    // show whether this wine is already in the journal or cellar
-    const prior = await api('journal?q=' + encodeURIComponent(d.producer || name));
-    if (prior.length) msg.innerHTML += `<br><b>Already in the journal:</b> ${prior.slice(0,3).map(p => esc(p.wine) + (p.score != null ? ' (' + p.score + ')' : '')).join('; ')}`;
-  } catch (e) { msg.textContent = e.message; }
 }
 async function scanLabelFile(file){
   if (!file) return;
@@ -283,65 +348,66 @@ async function saveBottles(){
   btn.disabled = true; btn.textContent = 'Saving…';
   const body = {producer: producer.value, name: name.value, vintage: num('vintage'), color: color.value, region: region.value,
     quantity: num('qty') || 1, purchase_price: num('price'), drink_from: num('from'), drink_to: num('to'),
-    location_code: loc.value || null, special_occasion: special.checked};
+    location_code: document.getElementById('loc').value || null, special_occasion: special.checked};
   try {
     const r = await api('bottles', {method:'POST', body: JSON.stringify(body)});
     const n = r.codes.length;
-    sessionStorage.setItem('justAdded', r.codes.join(','));
     location.hash = '#/bottle/' + r.codes[0];
     toast(`Saved ${n} × ${r.wine}.`, `Print ${n} label${n>1?'s':''}`, () => window.open('api/labels?codes=' + r.codes.join(','), '_blank'));
-  } catch (e) {
-    document.getElementById('addMsg').innerHTML = `<p class="sub">${esc(e.message)}</p>`;
-    btn.disabled = false; btn.textContent = 'Save';
-  }
+  } catch (e) { document.getElementById('addMsg').innerHTML = `<p class="sub">${esc(e.message)}</p>`; btn.disabled = false; btn.textContent = 'Save'; }
 }
 
 // ---------- Bottle ----------
 async function bottle(code){
   let b; try { b = await api('bottle/' + code); } catch (e) { topbar('Not found', {back:'#/cellar'}); view.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
-  const win = b.window_from || b.window_to ? `${b.window_from || '…'} to ${b.window_to || '…'}` : 'No drinking window on record';
-  const inCellar = b.bottle_status === 'in_cellar';
-  const incoming = b.bottle_status === 'incoming';
-  const scored = b.journal.filter(j => j.score != null);
-  topbar(b.label, {back:'#/cellar'});
+  CUR = b.currency || CUR;
+  const inCellar = b.bottle_status === 'in_cellar', incoming = b.bottle_status === 'incoming';
+  const win = b.window_from || b.window_to ? `${b.window_from || '…'} to ${b.window_to || '…'}${b.window_source === 'ai' ? ' (AI draft)' : ''}` : 'none on record';
+  topbar(b.label, {back:'#/cellar', noGear:true});
   view.innerHTML = `
-    <div class="card"><div class="row"><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div>${inCellar ? badge(b.status) : '<span class="badge unknown">Opened</span>'}</div>
-      <p><b>Where:</b> ${esc(b.location)}<br><b>Window:</b> ${win}${b.window_source === 'ai' ? ' (AI draft)' : ''}<br>
-      <b>Paid:</b> ${money(b.purchase_price, b.currency) || '—'} · <b>Value:</b> ${money(b.est_value, b.currency) || '—'}<br>${b.tags ? `<span class="sub">${esc(b.tags.replace(/,/g,' · '))}</span><br>` : ''}${b.wine_notes ? `<span class="sub">${esc(b.wine_notes)}</span><br>` : ''}<span class="sub">${esc(code)}</span></p></div>
-    ${incoming ? `<div class="card"><b>On order.</b> Not counted in the cellar yet.<br><br><button class="big" onclick="arrived('${esc(code)}')">It arrived</button></div>` : ''}
-    ${b.journal.length ? `<h2>Journal</h2>${b.journal.map(j => `<div class="card"><div class="row"><div class="title">${j.score != null ? j.score + ' · ' + esc(j.band) : esc(j.verdict || 'tasted')}</div><div class="sub">${esc(j.taster)}</div></div>${j.notes ? `<div>${esc(j.notes)}</div>` : ''}${j.history ? `<div class="sub">${esc(j.history)}</div>` : ''}</div>`).join('')}` : ''}
-    ${inCellar || incoming ? `<button class="big ghost" onclick="location.hash='#/journal/new/${esc(code)}'">Rate this wine</button><br><br>` : ''}
-    ${inCellar ? `<button class="big" onclick="drink('${esc(code)}')">Drink this</button><br><br>
-    <div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><a href="api/labels?codes=${esc(code)}" target="_blank"><button class="ghost" style="width:100%">Print label</button></a></div>
-    <p class="sub" style="margin-top:18px">${b.siblings_in_cellar > 1 ? `${b.siblings_in_cellar} bottles of this wine in the cellar. ` : ''}
-      <a href="#" onclick="deleteBottle('${esc(code)}', ${b.wine_id}, ${b.siblings_in_cellar});return false">Delete this bottle</a>
-      ${b.siblings_in_cellar > 1 ? ` · <a href="#" onclick="deleteAll(${b.wine_id}, ${b.siblings_in_cellar});return false">Delete all ${b.siblings_in_cellar}</a>` : ''}</p>` : ''}
-    ${b.history.length ? '<h2>History</h2>' + b.history.map(h => `<div class="card"><div class="sub">${new Date(h.when).toLocaleDateString()}${h.rating ? ' · ' + '★'.repeat(h.rating) : ''}</div>${esc(h.note)}</div>`).join('') : ''}`;
+    <div class="card">
+      <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div></div>${badge(inCellar ? b.status : incoming ? 'unknown' : 'opened')}</div>
+      <div class="meta" style="margin:10px 0 14px"><span>📍 <b>${esc(b.location)}</b></span>${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
+      ${inCellar ? `<button class="big" id="drinkBtn" onclick="drink('${esc(code)}')">Drink this</button>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
+    </div>
+    ${inCellar ? `<div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><button class="ghost" onclick="window.open('api/labels?codes=${esc(code)}','_blank')">Print label</button></div>` : ''}
+    <h2>Details</h2>
+    <div class="card"><dl class="kv">
+      <dt>Window</dt><dd>${esc(win)}</dd>
+      <dt>Paid</dt><dd>${money(b.purchase_price, b.currency) || '—'}</dd>
+      <dt>Value</dt><dd>${money(b.est_value, b.currency) || '—'}</dd>
+      ${b.tags ? `<dt>Tags</dt><dd>${esc(b.tags.replace(/,/g,' · '))}</dd>` : ''}
+      ${b.wine_notes ? `<dt>Notes</dt><dd>${esc(b.wine_notes)}</dd>` : ''}
+      ${b.siblings_in_cellar > 1 ? `<dt>In cellar</dt><dd>${b.siblings_in_cellar} bottles of this wine</dd>` : ''}
+      <dt>Code</dt><dd class="sub">${esc(code)}</dd>
+    </dl></div>
+    ${b.journal.length ? `<h2>Journal</h2>${b.journal.map(j => `<div class="card"><div class="row"><div class="col"><div class="title">${j.score != null ? esc(j.band) : esc(j.verdict || 'tasted')}</div><div class="sub">${esc(j.taster)}${j.where ? ' · ' + esc(j.where) : ''}</div></div>${scoreTag(j.score, j.verdict)}</div>${j.notes ? `<div style="margin-top:6px">${esc(j.notes)}</div>` : ''}${j.history ? `<div class="sub">${esc(j.history)}</div>` : ''}</div>`).join('')}` : ''}
+    ${inCellar || incoming ? `<button class="big ghost" onclick="location.hash='#/journal/new/${esc(code)}'">Rate this wine</button>` : ''}
+    ${inCellar ? `<h2>Fix a mistake</h2><div class="grid2"><button class="danger" onclick="deleteBottle('${esc(code)}')">Delete this bottle</button>${b.siblings_in_cellar > 1 ? `<button class="danger" onclick="deleteAll(${b.wine_id}, ${b.siblings_in_cellar})">Delete all ${b.siblings_in_cellar}</button>` : '<span></span>'}</div><p class="sub">Delete is for mistakes. Use Drink for bottles you opened.</p>` : ''}
+    ${b.history.length ? '<h2>Opened</h2>' + b.history.map(h => `<div class="card"><div class="sub">${new Date(h.when).toLocaleDateString()}${h.rating ? ' · ' + '★'.repeat(h.rating) : ''}</div>${esc(h.note)}</div>`).join('') : ''}`;
 }
 async function drink(code){
-  const r = await api(`bottle/${code}/drink`, {method:'POST', body:'{}'});
-  toast(`Enjoy! Opened ${r.label}.`, 'Undo', async () => { await api(`bottle/${code}/undo`, {method:'POST'}); bottle(code); });
+  await busy(document.getElementById('drinkBtn'), async () => {
+    const r = await api(`bottle/${code}/drink`, {method:'POST', body:'{}'});
+    toast(`Enjoy! Opened ${r.label}.`, 'Undo', async () => { await api(`bottle/${code}/undo`, {method:'POST'}); bottle(code); });
+  });
   bottle(code);
 }
 async function arrived(code){
-  await api(`bottle/${code}/arrived`, {method:'POST'}); toast('Welcome home. Scan it into a place.'); bottle(code);
+  await busy(document.getElementById('arrBtn'), async () => { await api(`bottle/${code}/arrived`, {method:'POST'}); });
+  toast('Welcome home. Scan it into a place.'); bottle(code);
 }
-async function deleteBottle(code, wineId, siblings){
-  const ok = await choose('Delete this bottle?', [{label:'Delete it', sub:'For mistakes. Use Drink for bottles you opened.', value:true}]);
-  if (!ok) return;
-  await api('bottle/' + code, {method:'DELETE'});
-  toast('Bottle deleted.'); location.hash = '#/cellar';
+async function deleteBottle(code){
+  const ok = await choose('Delete this bottle?', [{label:'Delete it', sub:'For mistakes. Use Drink for bottles you opened.', value:true}]); if (!ok) return;
+  await api('bottle/' + code, {method:'DELETE'}); toast('Bottle deleted.'); location.hash = '#/cellar';
 }
 async function deleteAll(wineId, n){
-  const ok = await choose(`Delete all ${n} unopened bottles of this wine?`, [{label:`Delete all ${n}`, value:true}]);
-  if (!ok) return;
-  const r = await api(`wine/${wineId}/bottles`, {method:'DELETE'});
-  toast(`Deleted ${r.deleted} bottles.`); location.hash = '#/cellar';
+  const ok = await choose(`Delete all ${n} unopened bottles of this wine?`, [{label:`Delete all ${n}`, value:true}]); if (!ok) return;
+  const r = await api(`wine/${wineId}/bottles`, {method:'DELETE'}); toast(`Deleted ${r.deleted} bottles.`); location.hash = '#/cellar';
 }
 async function moveBottle(code){
   const ls = await api('locations');
-  const pick = await choose('Move to which place?', ls.map(l => ({label: l.name, sub: `${l.count} bottles`, value: l.code})));
-  if (!pick) return;
+  const pick = await choose('Move to which place?', ls.map(l => ({label: l.name, sub: `${l.count} bottles`, value: l.code}))); if (!pick) return;
   const l = ls.find(x => x.code === pick);
   await api(`bottle/${code}/move`, {method:'POST', body: JSON.stringify({location_code: l.code})});
   toast(`Moved to ${l.name}.`); bottle(code);
@@ -350,26 +416,30 @@ async function moveBottle(code){
 // ---------- Location ----------
 async function locationPage(code){
   const l = await api('location/' + code);
-  topbar(l.name, {back:'#/cellar'});
-  view.innerHTML = `<p class="sub">${l.bottles.length} bottles · ${esc(code)}</p>
+  topbar(l.name, {back:'#/cellar', noGear:true});
+  const groups = {}; l.bottles.forEach(c => { (groups[c.label] = groups[c.label] || {...c, count:0}).count++; });
+  view.innerHTML = `<p class="sub">${l.bottles.length} bottle${l.bottles.length===1?'':'s'} · ${esc(code)}</p>
     <button class="big ghost" onclick="putHere('${esc(code)}')">Put bottles here (scan)</button>
-    ${l.bottles.map(c => bottleRow(c)).join('') || '<div class="card empty">Empty.</div>'}`;
+    ${Object.values(groups).map(bottleRow).join('') || '<div class="card empty">Empty. Scan bottles into this place or move them here.</div>'}`;
 }
-function putHere(code){ sessionStorage.setItem('moveTo', code); location.hash = '#/scan'; }
+function putHere(code){ sessionStorage.setItem('moveTo', code); sessionStorage.setItem('moveCount', '0'); location.hash = '#/scan'; }
+function endMove(){ sessionStorage.removeItem('moveTo'); sessionStorage.removeItem('moveCount'); route(); }
 
 // ---------- Scan ----------
 let stream, scanning;
 async function scan(){
   const moveTo = sessionStorage.getItem('moveTo');
-  topbar(moveTo ? 'Scan bottles to move' : 'Scan', moveTo ? {back:'#/location/' + moveTo} : {});
+  let moveName = '';
+  if (moveTo) { try { moveName = (await api('location/' + moveTo)).name; } catch (_) { sessionStorage.removeItem('moveTo'); } }
+  topbar(moveTo ? 'Moving bottles' : 'Scan', moveTo ? {back:'#/location/' + moveTo, noGear:true} : {noGear:true});
   view.innerHTML = `
-    ${moveTo ? `<p class="sub">Each scanned bottle moves immediately. <a href="#" onclick="sessionStorage.removeItem('moveTo');scan();return false">Done</a></p>` : '<p class="sub">Point at a bottle or place label.</p>'}
-    <video id="cam" autoplay playsinline muted></video><div id="camMsg" class="sub"></div>
+    ${moveTo ? `<div class="banner"><div>Moving to ${esc(moveName)}<div class="sub" style="color:#fff;opacity:.9" id="moveCount">${sessionStorage.getItem('moveCount')||0} scanned</div></div><button onclick="endMove()">Done</button></div>` : '<p class="sub">Point at a bottle or place label.</p>'}
+    <div class="scanwrap"><video id="cam" autoplay playsinline muted></video><div class="guide"><div></div></div></div>
+    <div id="camMsg" class="sub" style="margin:8px 0"></div>
     <input type="file" id="labelFile" accept="image/*" capture="environment" style="display:none" onchange="pendingLabelFile=this.files[0];location.hash='#/add'">
-    <button class="big ghost" onclick="labelFile.click()">📷 No QR yet? Photo the wine label</button>
-    <div class="card"><label>Or type the code</label><input id="manual" placeholder="B7K3QX9 or L4M9TQ2" autocapitalize="characters"><button class="big ghost" onclick="handleCode(manual.value)">Go</button></div>`;
+    <div class="grid2" style="margin-top:8px"><button class="ghost" onclick="labelFile.click()">Read a label instead</button><button class="ghost" onclick="typeCode()">Type a code</button></div>`;
   const msg = document.getElementById('camMsg');
-  if (!('BarcodeDetector' in window)) { msg.textContent = 'This browser cannot scan in-app. Use the phone camera app on the label, or type the code.'; return; }
+  if (!('BarcodeDetector' in window)) { msg.textContent = 'This browser cannot scan in-app. Use the phone camera on the label, or type the code.'; return; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
     const v = document.getElementById('cam'); v.srcObject = stream;
@@ -380,15 +450,15 @@ async function scan(){
       requestAnimationFrame(loop);
     };
     v.onloadedmetadata = loop;
-  } catch (e) { msg.textContent = 'Camera unavailable: ' + e.message + '. Type the code below.'; }
+  } catch (e) { msg.textContent = 'Camera unavailable: ' + e.message + '. Type the code instead.'; }
 }
+async function typeCode(){ const c = await askText('Type the code on the label', 'B7K3QX9 or L4M9TQ2'); if (c) handleCode(c); }
 function stopScan(){ scanning = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
 async function handleCode(raw){
-  const code = (raw || '').trim().toUpperCase().replace(/.*\/Q\//, '');
-  if (!code) return;
+  const code = (raw || '').trim().toUpperCase().replace(/.*\/Q\//, ''); if (!code) return;
   const moveTo = sessionStorage.getItem('moveTo');
   if (moveTo && code.startsWith('B')) {
-    try { const r = await api(`bottle/${code}/move`, {method:'POST', body: JSON.stringify({location_code: moveTo})}); toast(`Moved to ${r.location}. Keep scanning or tap Done.`); } catch (e) { toast(e.message); }
+    try { const r = await api(`bottle/${code}/move`, {method:'POST', body: JSON.stringify({location_code: moveTo})}); const n = Number(sessionStorage.getItem('moveCount')||0) + 1; sessionStorage.setItem('moveCount', n); const mc = document.getElementById('moveCount'); if (mc) mc.textContent = n + ' scanned'; toast(`Moved to ${r.location}.`, null, null, 2500); } catch (e) { toast(e.message); }
     return;
   }
   stopScan();
@@ -396,58 +466,78 @@ async function handleCode(raw){
 }
 
 // ---------- Journal ----------
-const bandClass = s => s == null ? 'unknown' : s >= 90 ? 'ready' : s >= 80 ? 'drink_soon' : s >= 70 ? 'unknown' : 'past_peak';
 function tastingRow(t){
-  const head = t.score != null ? `<span class="badge ${bandClass(t.score)}">${t.score}</span>` : `<span class="badge unknown">${esc(t.verdict || 'tasted')}</span>`;
-  return `<div class="card"><div class="row"><div><div class="title">${esc(t.wine)}${t.vintage ? ' ' + t.vintage : ''}</div>
-    <div class="sub">${[t.taster, t.band, t.where].filter(Boolean).map(esc).join(' · ')}</div>${t.notes ? `<div style="margin-top:4px">${esc(t.notes)}</div>` : ''}${t.history ? `<div class="sub">${esc(t.history)}</div>` : ''}</div>${head}</div>
-    <div class="sub" style="margin-top:6px;text-align:right"><a href="#" onclick="deleteTasting(${t.id});return false">delete</a></div></div>`;
+  return `<div class="card"><div class="row"><div class="col"><div class="title">${esc(t.wine)}${t.vintage ? ' ' + t.vintage : ''}</div>
+    <div class="meta">${[t.taster, t.band, t.where].filter(Boolean).map(x => `<span>${esc(x)}</span>`).join('')}</div>
+    ${t.notes ? `<div style="margin-top:4px">${esc(t.notes)}</div>` : ''}${t.history ? `<div class="sub">${esc(t.history)}</div>` : ''}</div>${scoreTag(t.score, t.verdict || 'tasted')}</div>
+    <div class="sub" style="margin-top:6px;text-align:right"><a href="#" onclick="deleteTasting(${t.id});return false" style="color:var(--muted)">delete</a></div></div>`;
 }
-let jt;
+let jseg = 'all', jt;
 async function journal(){
-  const [rows, wish] = await Promise.all([api('journal'), api('wishlist')]);
+  const [rows, wish, st] = await Promise.all([api('journal'), api('wishlist'), api('settings')]);
+  CUR = st.currency;
+  topbar('Journal', {action:{icon:'＋', label:'Add a tasting', onclick:"location.hash='#/journal/new'"}});
   const loved = rows.filter(t => t.score >= 90 || t.verdict === 'favorite');
   const avoid = rows.filter(t => (t.score != null && t.score < 70) || t.verdict === 'dislike');
-  topbar('Journal', {action:{icon:'＋', label:'Add a tasting', onclick:"location.hash='#/journal/new'"}});
+  const body = jseg === 'loved' ? (loved.map(tastingRow).join('') || '<div class="card empty">Nothing rated 90+ yet.</div>')
+    : jseg === 'avoid' ? (avoid.map(tastingRow).join('') || '<div class="card empty">Nothing to avoid.</div>')
+    : jseg === 'wish' ? ((wish.map(w => `<div class="card"><div class="row"><div class="col"><div class="title">${esc(w.wine)}${w.vintage ? ' ' + w.vintage : ''}</div><div class="meta"><span>${esc(w.status.replace('_',' '))}</span>${w.reference_price ? `<span>${money(w.reference_price, CUR)}</span>` : ''}</div>${w.notes ? `<div class="sub">${esc(w.notes)}</div>` : ''}</div><a href="#" class="sub" onclick="deleteWish(${w.id});return false">remove</a></div></div>`).join('') || '<div class="card empty">Empty.</div>') + '<button class="ghost" style="width:100%" onclick="addWish()">Add to wish list</button>')
+    : (rows.map(tastingRow).join('') || '<div class="card empty">No tastings yet. Tap + and photograph a label.</div>');
   view.innerHTML = `
-    <button class="big" onclick="location.hash='#/journal/new'">Add a tasting</button>
-    <input id="jq" placeholder="Search tastings" style="margin-top:12px" oninput="clearTimeout(jt); jt=setTimeout(journalSearch,250)"><div id="jres"></div>
-    <h2>Loved (${loved.length})</h2>${loved.map(tastingRow).join('') || '<div class="card empty">Nothing yet.</div>'}
-    <h2>Wish list</h2>${wish.map(w => `<div class="card"><div class="row"><div><div class="title">${esc(w.wine)}${w.vintage ? ' ' + w.vintage : ''}</div><div class="sub">${esc(w.status.replace('_',' '))}${w.reference_price ? ' · ' + money(w.reference_price) : ''}${w.notes ? ' · ' + esc(w.notes) : ''}</div></div><a href="#" class="sub" onclick="deleteWish(${w.id});return false">remove</a></div></div>`).join('') || '<div class="card empty">Empty.</div>'}
-    <button class="ghost" onclick="addWish()">Add to wish list</button>
-    <h2>All tastings (${rows.length})</h2>${rows.map(tastingRow).join('')}
-    <h2>Avoid (${avoid.length})</h2>${avoid.map(tastingRow).join('') || '<div class="card empty">Nothing here.</div>'}`;
+    <input id="jq" placeholder="Search tastings" oninput="clearTimeout(jt); jt=setTimeout(journalSearch,250)"><div id="jres"></div>
+    <div class="segs">${[['all','All ' + rows.length],['loved','Loved ' + loved.length],['wish','Wish list ' + wish.length],['avoid','Avoid ' + avoid.length]].map(([k,l]) => `<button class="${jseg===k?'on':''}" onclick="jseg='${k}';journal()">${l}</button>`).join('')}</div>
+    ${body}`;
 }
 async function journalSearch(){
   const q = document.getElementById('jq').value.trim(); const box = document.getElementById('jres');
   if (!q) { box.innerHTML = ''; return; }
   const r = await api('journal?q=' + encodeURIComponent(q)); box.innerHTML = r.map(tastingRow).join('') || '<div class="card empty">No match.</div>';
 }
+async function scanTastingLabel(file){
+  if (!file) return;
+  const msg = document.getElementById('tscanMsg');
+  try {
+    const d = await readLabel(file, 'tscanMsg');
+    const name = [d.producer, d.name].filter(Boolean).join(' ');
+    if (name) document.getElementById('tw').value = name;
+    if (d.vintage) document.getElementById('tv').value = d.vintage;
+    const bits = [`Read with ${d.confidence} confidence.`];
+    if (d.region) bits.push(d.region + (d.country ? ', ' + d.country : ''));
+    if (d.varietals.length) bits.push('Grapes: ' + d.varietals.join(', '));
+    if (d.note) bits.push(d.note);
+    msg.innerHTML = bits.map(esc).join(' · ');
+    const prior = await api('journal?q=' + encodeURIComponent(d.producer || name));
+    if (prior.length) msg.innerHTML += `<br><b>Already in the journal:</b> ${prior.slice(0,3).map(p => esc(p.wine) + (p.score != null ? ' (' + p.score + ')' : '')).join('; ')}`;
+  } catch (e) { msg.textContent = e.message; }
+}
+function quickScore(v, el){ document.getElementById('ts').value = v; el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); el.classList.add('on'); }
 async function journalNew(code){
   let pre = {};
   if (code) { const b = await api('bottle/' + code); pre = {wine: b.producer + (b.name ? ' ' + b.name : ''), vintage: b.vintage}; }
   const st = await api('settings');
-  topbar('Add a tasting', {back:'#/journal'});
+  topbar('Add a tasting', {back: code ? '#/bottle/' + code : '#/journal', noGear:true});
   view.innerHTML = `
     <input type="file" id="tLabelFile" accept="image/*" capture="environment" style="display:none" onchange="scanTastingLabel(this.files[0])">
-    <button class="big ghost" onclick="tLabelFile.click()">📷 Photo the label</button>
+    ${code ? '' : '<button class="big ghost" onclick="tLabelFile.click()">📷 Photo the label</button>'}
     <div id="tscanMsg" class="sub" style="margin:8px 0"></div>
     <div class="card">
     <label>Wine *</label><input id="tw" value="${esc(pre.wine || '')}" placeholder="Producer and wine">
     <div class="grid2"><div><label>Vintage</label><input id="tv" type="number" value="${pre.vintage || ''}"></div><div><label>Who tasted</label><input id="tt" value="${esc(st.default_taster || '')}"></div></div>
-    <label>Score (100-point, leave blank if unsure)</label><input id="ts" type="number" min="0" max="100">
-    <label>Verdict if unscored</label><select id="tvd"><option value="">—</option><option value="favorite">Favorite</option><option value="ok">OK</option><option value="dislike">Dislike</option></select>
+    <label>Score</label>
+    <div class="chips">${[70,80,85,90,95].map(v => `<button class="chip" onclick="quickScore(${v}, this)">${v}</button>`).join('')}</div>
+    <input id="ts" type="number" min="0" max="100" placeholder="Exact score, or leave blank">
+    <label>If unscored</label><select id="tvd"><option value="">—</option><option value="favorite">Favorite</option><option value="ok">OK</option><option value="dislike">Dislike</option></select>
     <label>Notes</label><textarea id="tn" rows="3" placeholder="Smoke, cedar, long finish…"></textarea>
     <label>Where</label><input id="twh" placeholder="Home, restaurant, tasting room…">
     <button class="big" id="tsave" onclick="saveTasting(${code ? `'${esc(code)}'` : 'null'})">Save</button><div id="tmsg" class="sub"></div></div>`;
 }
 async function saveTasting(code){
-  const btn = document.getElementById('tsave'); if (btn.disabled) return; btn.disabled = true;
+  const btn = document.getElementById('tsave'); if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const body = {wine: tw.value, vintage: num('tv'), taster: tt.value, score: num('ts'), verdict: tvd.value, notes: tn.value, where: twh.value, bottle_code: code};
     await api('journal', {method:'POST', body: JSON.stringify(body)});
     toast('Tasting saved.'); location.hash = code ? '#/bottle/' + code : '#/journal';
-  } catch (e) { document.getElementById('tmsg').textContent = e.message; btn.disabled = false; }
+  } catch (e) { document.getElementById('tmsg').textContent = e.message; btn.disabled = false; btn.textContent = 'Save'; }
 }
 async function deleteTasting(id){ const ok = await choose('Delete this tasting?', [{label:'Delete it', value:true}]); if (!ok) return; await api('journal/' + id, {method:'DELETE'}); journal(); }
 async function deleteWish(id){ await api('wishlist/' + id, {method:'DELETE'}); journal(); }
@@ -456,16 +546,20 @@ async function addWish(){ const w = await askText('Add to wish list', 'Producer 
 // ---------- Settings ----------
 async function settings(){
   const [st, ls] = await Promise.all([api('settings'), api('locations')]);
-  topbar('Settings', {back:'#/tonight', action:{icon:'', label:'', onclick:''}});
+  topbar('Settings', {back:'#/tonight', noGear:true});
+  const large = document.documentElement.dataset.size === 'large';
   view.innerHTML = `
-    <div class="card"><label>Default place for new bottles</label>
+    <div class="card"><label>Text size on this device</label>
+      <div class="segs"><button class="${large?'':'on'}" onclick="setSize('normal')">Normal</button><button class="${large?'on':''}" onclick="setSize('large')">Large</button></div>
+      <label>Default place for new bottles</label>
       <select id="defLoc">${ls.map(l => `<option value="${l.code}" ${l.code === st.default_location_code ? 'selected' : ''}>${esc(l.name)}${l.holding ? ' (holding place)' : ''}</option>`).join('')}</select>
       <label>Default taster for journal entries</label><input id="defTaster" value="${esc(st.default_taster || '')}" placeholder="Jen">
       <label>Household taste profile (Claude reads this when recommending)</label><textarea id="tasteProfile" rows="8">${esc(st.taste_profile || '')}</textarea>
-      <button class="big" onclick="saveSettings()">Save</button><div id="setMsg" class="sub"></div></div>
+      <button class="big" onclick="saveSettings()">Save</button></div>
     <h2>From the add-on configuration</h2>
     <div class="card sub">Currency ${esc(st.currency)} · Drink soon within ${st.drink_soon_months} months · Price tiers ${money(st.price_tier_low, st.currency)} and ${money(st.price_tier_high, st.currency)}<br>Change these in Home Assistant: Settings → Add-ons → Stellar Cellar → Configuration.</div>`;
 }
+function setSize(s){ if (s === 'large') { document.documentElement.dataset.size = 'large'; localStorage.setItem('sc_size','large'); } else { delete document.documentElement.dataset.size; localStorage.removeItem('sc_size'); } settings(); }
 async function saveSettings(){
   await api('settings', {method:'POST', body: JSON.stringify({default_location_code: document.getElementById('defLoc').value, default_taster: document.getElementById('defTaster').value, taste_profile: document.getElementById('tasteProfile').value})});
   toast('Settings saved.');
@@ -486,12 +580,12 @@ async function route(){
     if (page === 'scan') await scan();
     else if (page === 'cellar') await cellar();
     else if (page === 'add') addForm();
+    else if (page === 'bottle' && arg) await bottle(arg.toUpperCase());
+    else if (page === 'location' && arg) await locationPage(arg.toUpperCase());
     else if (page === 'settings') await settings();
     else if (page === 'list') await statusList(arg || 'all');
     else if (page === 'journal' && arg === 'new') await journalNew(location.hash.split('/')[3] ? location.hash.split('/')[3].toUpperCase() : null);
     else if (page === 'journal') await journal();
-    else if (page === 'bottle' && arg) await bottle(arg.toUpperCase());
-    else if (page === 'location' && arg) await locationPage(arg.toUpperCase());
     else await tonight();
   } catch (e) { view.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; }
 }
