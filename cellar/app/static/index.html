@@ -371,6 +371,7 @@ async function bottle(code){
       ${inCellar ? `<button class="big" id="drinkBtn" onclick="drink('${esc(code)}')">Drink this</button>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
     </div>
     ${inCellar ? `<div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><button class="ghost" onclick="window.open('api/labels?codes=${esc(code)}','_blank')">Print label</button></div>` : ''}
+    <button class="ghost" style="width:100%;margin-top:10px" onclick="location.hash='#/edit/${esc(code)}'">Edit details</button>
     <h2>Details</h2>
     <div class="card"><dl class="kv">
       <dt>Window</dt><dd>${esc(win)}</dd>
@@ -411,6 +412,41 @@ async function moveBottle(code){
   const l = ls.find(x => x.code === pick);
   await api(`bottle/${code}/move`, {method:'POST', body: JSON.stringify({location_code: l.code})});
   toast(`Moved to ${l.name}.`); bottle(code);
+}
+
+// ---------- Edit bottle ----------
+async function editForm(code){
+  const b = await api('bottle/' + code);
+  topbar('Edit details', {back:'#/bottle/' + code, noGear:true});
+  const opt = (v, l) => `<option value="${v}" ${b.color===v?'selected':''}>${l}</option>`;
+  view.innerHTML = `
+    <div class="card">
+    <label>Producer *</label><input id="e_producer" value="${esc(b.producer)}">
+    <label>Wine name</label><input id="e_name" value="${esc(b.name)}">
+    <div class="grid2"><div><label>Vintage</label><input id="e_vintage" type="number" value="${b.vintage ?? ''}"></div>
+      <div><label>Color</label><select id="e_color">${opt('red','Red')}${opt('white','White')}${opt('rose','Rosé')}${opt('sparkling','Sparkling')}${opt('dessert','Dessert')}${opt('fortified','Fortified')}</select></div></div>
+    <div class="grid2"><div><label>Region</label><input id="e_region" value="${esc(b.region)}"></div><div><label>Country</label><input id="e_country" value="${esc(b.country)}"></div></div>
+    <div class="grid2"><div><label>Drink from (year)</label><input id="e_from" type="number" value="${b.window_from ?? ''}"></div><div><label>Drink until (year)</label><input id="e_to" type="number" value="${b.window_to ?? ''}"></div></div>
+    <label>Notes</label><textarea id="e_notes" rows="2">${esc(b.wine_notes)}</textarea>
+    <label style="display:flex;align-items:center;gap:10px;margin:4px 0 14px"><input type="checkbox" id="e_special" style="width:auto;min-height:0;margin:0" ${b.special_occasion?'checked':''}>Special occasion wine</label>
+    ${b.siblings_in_cellar > 1 ? `<p class="sub">These fields are shared by all ${b.siblings_in_cellar} bottles of this wine.</p>` : ''}
+    </div>
+    <h2>This bottle only</h2>
+    <div class="card">
+    <div class="grid2"><div><label>Price paid</label><input id="e_price" type="number" step="0.01" value="${b.purchase_price ?? ''}"></div><div><label>Estimated value</label><input id="e_value" type="number" step="0.01" value="${b.est_value ?? ''}"></div></div>
+    <button class="big" id="editSave" onclick="saveEdit('${esc(code)}')">Save changes</button><div id="editMsg" class="sub"></div></div>`;
+}
+async function saveEdit(code){
+  const btn = document.getElementById('editSave'); if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Saving…';
+  const v = id => document.getElementById(id).value;
+  const body = {producer: v('e_producer'), name: v('e_name'), color: v('e_color'), region: v('e_region'), country: v('e_country'),
+    notes: v('e_notes'), special_occasion: document.getElementById('e_special').checked,
+    vintage: num('e_vintage'), clear_vintage: v('e_vintage') === '',
+    drink_from: num('e_from'), drink_to: num('e_to'), clear_window: v('e_from') === '' && v('e_to') === '',
+    purchase_price: num('e_price'), clear_purchase_price: v('e_price') === '',
+    est_value: num('e_value'), clear_est_value: v('e_value') === ''};
+  try { await api('bottle/' + code, {method:'PATCH', body: JSON.stringify(body)}); toast('Saved.'); location.hash = '#/bottle/' + code; }
+  catch (e) { document.getElementById('editMsg').textContent = e.message; btn.disabled = false; btn.textContent = 'Save changes'; }
 }
 
 // ---------- Location ----------
@@ -566,7 +602,7 @@ async function saveSettings(){
 }
 
 // ---------- Router ----------
-const TAB_FOR = {list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
+const TAB_FOR = {list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
 window.__navDepth = 0;
 window.addEventListener('hashchange', () => { window.__navDepth++; });
 async function route(){
@@ -583,6 +619,7 @@ async function route(){
     else if (page === 'bottle' && arg) await bottle(arg.toUpperCase());
     else if (page === 'location' && arg) await locationPage(arg.toUpperCase());
     else if (page === 'settings') await settings();
+    else if (page === 'edit' && arg) await editForm(arg.toUpperCase());
     else if (page === 'list') await statusList(arg || 'all');
     else if (page === 'journal' && arg === 'new') await journalNew(location.hash.split('/')[3] ? location.hash.split('/')[3].toUpperCase() : null);
     else if (page === 'journal') await journal();

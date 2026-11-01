@@ -140,3 +140,20 @@ def test_bottles_by_status():
         assert any(c["label"].startswith("StatusTest") for c in ready)
         assert all(c["status"] == "ready" for c in ready)
         assert len(client.get("/api/bottles").json()) >= len(ready)
+
+
+def test_edit_bottle():
+    with TestClient(app) as client:
+        r = client.post("/api/bottles", json={"producer": "Edit Me", "quantity": 2, "purchase_price": 20}).json()
+        a, b2 = r["codes"]
+        e = client.patch(f"/api/bottle/{a}", json={"producer": "Edited", "vintage": 2019, "region": "Paso",
+                                                   "drink_from": 2025, "drink_to": 2035, "est_value": 55,
+                                                   "special_occasion": True}).json()
+        assert e["producer"] == "Edited" and e["vintage"] == 2019 and e["window_to"] == 2035 and e["est_value"] == 55
+        other = client.get(f"/api/bottle/{b2}").json()
+        assert other["producer"] == "Edited" and other["window_to"] == 2035      # wine fields shared
+        assert other["est_value"] is None                                        # price is per bottle
+        e2 = client.patch(f"/api/bottle/{a}", json={"clear_window": True, "clear_est_value": True}).json()
+        assert e2["window_to"] is None and e2["est_value"] is None
+        assert client.patch(f"/api/bottle/{a}", json={"producer": "  "}).status_code == 400
+        assert client.patch(f"/api/bottle/{a}", json={"color": "purple"}).status_code == 400

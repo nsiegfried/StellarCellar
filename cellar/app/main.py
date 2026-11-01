@@ -376,6 +376,83 @@ def bottle_detail(code: str, session: Session = Depends(get_session)):
     }
 
 
+class EditBottle(BaseModel):
+    producer: Optional[str] = None
+    name: Optional[str] = None
+    vintage: Optional[int] = None
+    clear_vintage: bool = False
+    color: Optional[str] = None
+    region: Optional[str] = None
+    country: Optional[str] = None
+    special_occasion: Optional[bool] = None
+    notes: Optional[str] = None
+    drink_from: Optional[int] = None
+    drink_to: Optional[int] = None
+    clear_window: bool = False
+    purchase_price: Optional[float] = None
+    est_value: Optional[float] = None
+    clear_purchase_price: bool = False
+    clear_est_value: bool = False
+
+
+@app.patch("/api/bottle/{code}")
+def edit_bottle(code: str, body: EditBottle, session: Session = Depends(get_session)):
+    """Edit a bottle. Wine fields apply to every bottle of that wine; prices apply to this bottle only."""
+    b = get_bottle_or_404(session, code)
+    wine = session.get(Wine, b.wine_id)
+    if body.producer is not None:
+        if not body.producer.strip():
+            raise HTTPException(400, "Producer is required")
+        wine.producer = body.producer.strip()
+    if body.name is not None:
+        wine.name = body.name.strip()
+    if body.clear_vintage:
+        wine.vintage = None
+    elif body.vintage is not None:
+        wine.vintage = body.vintage
+    if body.color is not None:
+        if body.color not in ("red", "white", "rose", "sparkling", "dessert", "fortified"):
+            raise HTTPException(400, "Unknown color")
+        wine.color = body.color
+    if body.region is not None:
+        wine.region = body.region.strip()
+    if body.country is not None:
+        wine.country = body.country.strip()
+    if body.special_occasion is not None:
+        wine.special_occasion = body.special_occasion
+    if body.notes is not None:
+        wine.notes = body.notes.strip()[:1000]
+    session.add(wine)
+
+    if body.clear_window:
+        session.exec(sql_delete(DrinkingWindow).where(DrinkingWindow.wine_id == wine.id))
+    elif body.drink_from is not None or body.drink_to is not None:
+        win = best_window(session, wine.id)
+        if win:
+            if body.drink_from is not None:
+                win.drink_from = body.drink_from
+            if body.drink_to is not None:
+                win.drink_to = body.drink_to
+            win.source = "owner"
+            win.approved = True
+            session.add(win)
+        else:
+            session.add(DrinkingWindow(wine_id=wine.id, drink_from=body.drink_from, drink_to=body.drink_to,
+                                       source="owner", approved=True))
+
+    if body.clear_purchase_price:
+        b.purchase_price = None
+    elif body.purchase_price is not None:
+        b.purchase_price = body.purchase_price
+    if body.clear_est_value:
+        b.est_value = None
+    elif body.est_value is not None:
+        b.est_value = body.est_value
+    session.add(b)
+    session.commit()
+    return bottle_detail(code, session)
+
+
 @app.post("/api/bottle/{code}/drink")
 def drink(code: str, body: DrinkBody = DrinkBody(), session: Session = Depends(get_session)):
     b = get_bottle_or_404(session, code)
