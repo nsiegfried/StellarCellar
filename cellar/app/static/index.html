@@ -173,11 +173,20 @@ async function statusList(status){
 }
 
 // ---------- Cellar ----------
+let showValue = false;
+async function toggleValue(){
+  showValue = !showValue;
+  const box = document.getElementById('valueBox'); const btn = document.getElementById('valueBtn');
+  if (showValue) { const s = await api('summary'); box.innerHTML = `<div class="card" style="text-align:center"><div class="n" style="font-size:26px;font-weight:700">${money(s.value, s.currency)}</div><div class="sub">estimated value of ${s.total} bottles in the cellar</div></div>`; btn.textContent = 'Hide value'; }
+  else { box.innerHTML = ''; btn.textContent = 'Show cellar value'; }
+}
 async function cellar(){
   const [locs, inc] = await Promise.all([api('locations'), api('incoming')]);
+  showValue = false;
   topbar('Cellar', {action:{icon:'＋', label:'Add bottles', onclick:"location.hash='#/add'"}});
   view.innerHTML = `
     <input id="q" placeholder="Search producer or wine" oninput="searchDebounced()"><div id="results"></div>
+    <div id="valueBox"></div><button class="ghost" id="valueBtn" style="width:100%" onclick="toggleValue()">Show cellar value</button>
     <h2>Places</h2>${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">(holding place)</span>' : ''}</div><div class="sub">${l.count} bottles</div></div></div>`).join('') || '<div class="card empty">No places yet.</div>'}
     <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
     ${inc.length ? `<h2>On order (${inc.length})</h2>${inc.map(c => bottleRow(c)).join('')}` : ''}
