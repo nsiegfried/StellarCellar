@@ -1,5 +1,6 @@
 import html
 import os
+import re
 import secrets
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
@@ -33,8 +34,18 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="Cellar", lifespan=lifespan)
+app = FastAPI(title="Stellar Cellar", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.middleware("http")
+async def collapse_slashes(request: Request, call_next):
+    """Home Assistant Ingress can hand us paths like '//' or '//api/picks'. Normalise them."""
+    path = request.scope.get("path", "")
+    if "//" in path:
+        request.scope["path"] = re.sub(r"/{2,}", "/", path)
+        request.scope["raw_path"] = request.scope["path"].encode()
+    return await call_next(request)
 
 
 # ---------- helpers ----------

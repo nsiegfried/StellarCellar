@@ -55,6 +55,8 @@ def test_full_flow():
 
         assert client.get("/api/bottle/BNOPE123").status_code == 404
         assert client.get("/").status_code == 200
+        assert client.get("//").status_code == 200            # Ingress double-slash
+        assert client.get("//api/health").json() == {"ok": True}
 
 
 def test_label_formats():

@@ -1,5 +1,5 @@
 name: Stellar Cellar
-version: "0.4.0"
+version: "0.4.1"
 slug: stellar_cellar
 description: Wine cellar tracker with QR labels, drinking windows, price tiers, and Claude picks
 arch:
@@ -7,7 +7,6 @@ arch:
 init: false
 ingress: true
 ingress_port: 8099
-ingress_entry: /
 panel_icon: mdi:bottle-wine
 panel_title: Stellar Cellar
 panel_admin: false
