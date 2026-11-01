@@ -131,3 +131,12 @@ def test_single_word_wine_does_not_attract_links():
         client.delete(f"/api/bottle/{rl['codes'][0]}")
         kept = [x for x in client.get("/api/journal").json() if x["wine"] == "Ridge Lytton Petite Sirah"][0]
         assert kept["wine_id"] is None
+
+
+def test_bottles_by_status():
+    with TestClient(app) as client:
+        client.post("/api/bottles", json={"producer": "StatusTest", "quantity": 2, "drink_from": 2020, "drink_to": 2040})
+        ready = client.get("/api/bottles?status=ready").json()
+        assert any(c["label"].startswith("StatusTest") for c in ready)
+        assert all(c["status"] == "ready" for c in ready)
+        assert len(client.get("/api/bottles").json()) >= len(ready)

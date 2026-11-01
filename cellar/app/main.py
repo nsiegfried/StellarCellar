@@ -266,6 +266,17 @@ def search(q: str = "", session: Session = Depends(get_session)):
     return [candidate(session, b) for b in bottles]
 
 
+@app.get("/api/bottles")
+def list_bottles(status: str = "all", session: Session = Depends(get_session)):
+    """Every bottle in the cellar, optionally filtered by window status (ready, drink_soon, too_young, past_peak, unknown)."""
+    cands = [candidate(session, b) for b in in_cellar(session)]
+    if status != "all":
+        cands = [c for c in cands if c["status"] == status]
+    order = {"drink_soon": 0, "ready": 1, "unknown": 2, "too_young": 3, "past_peak": 4}
+    cands.sort(key=lambda c: (order.get(c["status"], 9), -(c.get("score") or 0), c["label"]))
+    return cands
+
+
 @app.get("/api/picks")
 def picks(session: Session = Depends(get_session)):
     cands = [candidate(session, b) for b in in_cellar(session)]
