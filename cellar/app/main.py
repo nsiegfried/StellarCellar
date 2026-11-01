@@ -451,6 +451,9 @@ def _prune_wine(session: Session, wine_id: int):
     """Drop a wine record once it has no bottles at all (so it stops appearing in search)."""
     if not session.exec(select(Bottle).where(Bottle.wine_id == wine_id)).first():
         session.exec(sql_delete(DrinkingWindow).where(DrinkingWindow.wine_id == wine_id))
+        for t in session.exec(select(Tasting).where(Tasting.wine_id == wine_id)).all():
+            t.wine_id = None          # journal entries outlive the cellar record
+            session.add(t)
         wine = session.get(Wine, wine_id)
         if wine:
             session.delete(wine)
@@ -503,6 +506,24 @@ def add_tasting(body: TastingBody, session: Session = Depends(get_session)):
     session.commit()
     session.refresh(t)
     return tasting_out(t)
+
+
+@app.post("/api/journal/relink")
+def relink_journal(session: Session = Depends(get_session)):
+    """Re-run wine matching for every journal entry. Manual links (via bottle code) are kept."""
+    changed = 0
+    for t in session.exec(select(Tasting)).all():
+        if t.source != "import" and t.wine_id is not None:
+            continue
+        w = importer.match_wine(session, t.wine_text, t.vintage)
+        new_id = w.id if w else None
+        if new_id != t.wine_id:
+            t.wine_id = new_id
+            session.add(t)
+            changed += 1
+    session.commit()
+    linked = len(session.exec(select(Tasting).where(Tasting.wine_id != None)).all())  # noqa: E711
+    return {"changed": changed, "linked": linked}
 
 
 @app.delete("/api/journal/{tasting_id}")

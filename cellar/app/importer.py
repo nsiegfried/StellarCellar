@@ -58,7 +58,11 @@ def match_wine(session: Session, text: str, vintage: Optional[int]) -> Optional[
         have = _tokens(f"{w.producer} {w.name}")
         if not have:
             continue
-        overlap = len(want & have) / min(len(want), len(have))
+        common = want & have
+        # one shared word is only enough when both names are a single word ("Faust" vs "Faust")
+        if len(common) < 2 and not (len(want) == 1 and len(have) == 1):
+            continue
+        overlap = len(common) / min(len(want), len(have))
         if vintage and w.vintage and vintage != w.vintage:
             overlap -= 0.25
         if overlap > best_score:

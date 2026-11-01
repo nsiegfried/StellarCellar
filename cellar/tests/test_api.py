@@ -116,3 +116,18 @@ def test_journal_and_import(tmp_path):
         t = client.post("/api/journal", json={"wine": "New Thing", "score": 88, "notes": "good"}).json()
         assert t["band"] == "Strong" and t["taster"] == "Jen"
         assert client.delete(f"/api/journal/{t['id']}").json()["ok"]
+
+
+def test_single_word_wine_does_not_attract_links():
+    with TestClient(app) as client:
+        client.post("/api/bottles", json={"producer": "Ridge", "name": "Vineyards", "quantity": 1})
+        r = client.post("/api/journal", json={"wine": "Ridge Lytton Petite Sirah", "score": 75}).json()
+        assert r["wine_id"] is None
+        rl = client.post("/api/bottles", json={"producer": "Ridge Lytton", "name": "Petite Sirah", "quantity": 1}).json()
+        assert client.post("/api/journal/relink").json()["changed"] >= 1
+        linked = [x for x in client.get("/api/journal").json() if x["wine"] == "Ridge Lytton Petite Sirah"][0]
+        assert linked["wine_id"] is not None
+        # deleting the cellar wine unlinks but keeps the tasting
+        client.delete(f"/api/bottle/{rl['codes'][0]}")
+        kept = [x for x in client.get("/api/journal").json() if x["wine"] == "Ridge Lytton Petite Sirah"][0]
+        assert kept["wine_id"] is None
