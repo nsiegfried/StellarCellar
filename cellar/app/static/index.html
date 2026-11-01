@@ -47,6 +47,7 @@ video{width:100%;border-radius:14px;background:#000;max-height:60vh}
   <a href="#/tonight" data-tab="tonight">Tonight</a>
   <a href="#/scan" class="scan"><span>Scan</span></a>
   <a href="#/cellar" data-tab="cellar">Cellar</a>
+  <a href="#/settings" data-tab="settings" style="flex:0 0 56px">⚙︎</a>
 </nav>
 <div id="toast"><span id="toastText"></span><button id="toastBtn"></button></div>
 
@@ -121,7 +122,7 @@ async function cellar(){
   const locs = await api('locations');
   view.innerHTML = `<h1>Cellar</h1>
     <input id="q" placeholder="Search producer or wine" oninput="searchDebounced()"><div id="results"></div>
-    <h2>Places</h2>${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="title">${esc(l.name)}</div><div class="sub">${l.count} bottles</div></div></div>`).join('') || '<div class="card empty">No places yet.</div>'}
+    <h2>Places</h2>${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">(holding place)</span>' : ''}</div><div class="sub">${l.count} bottles</div></div></div>`).join('') || '<div class="card empty">No places yet.</div>'}
     <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
     ${locs.length ? `<p class="sub">Print place labels: <a href="api/labels?codes=${locs.map(l=>l.code).join(',')}" target="_blank">open sheet</a></p>` : ''}`;
 }
@@ -155,8 +156,12 @@ function addForm(){
     <div class="grid2"><div><label>Drink from (year)</label><input id="from" type="number"></div><div><label>Drink until (year)</label><input id="to" type="number"></div></div>
     <label>Place</label><select id="loc"><option value="">Decide later</option></select>
     <label><input type="checkbox" id="special" style="width:auto;margin-right:8px">Special occasion wine</label><br><br>
-    <button class="big" onclick="saveBottles()">Save</button><div id="addMsg"></div></div>`;
-  api('locations').then(ls => ls.forEach(l => loc.add(new Option(l.name, l.code))));
+    <button class="big" id="saveBtn" onclick="saveBottles()">Save</button><div id="addMsg"></div></div>`;
+  Promise.all([api('locations'), api('settings')]).then(([ls, st]) => {
+    loc.innerHTML = '';
+    ls.forEach(l => loc.add(new Option(l.holding ? l.name + ' (holding place)' : l.name, l.code)));
+    loc.value = st.default_location_code;
+  });
   if (pendingLabelFile) { const f = pendingLabelFile; pendingLabelFile = null; scanLabelFile(f); }
 }
 let pendingLabelFile = null;
@@ -185,13 +190,21 @@ async function scanLabelFile(file){
 }
 const num = id => { const v = document.getElementById(id).value; return v === '' ? null : Number(v); };
 async function saveBottles(){
+  const btn = document.getElementById('saveBtn'); if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = 'Saving…';
   const body = {producer: producer.value, name: name.value, vintage: num('vintage'), color: color.value, region: region.value,
     quantity: num('qty') || 1, purchase_price: num('price'), drink_from: num('from'), drink_to: num('to'),
     location_code: loc.value || null, special_occasion: special.checked};
   try {
     const r = await api('bottles', {method:'POST', body: JSON.stringify(body)});
-    document.getElementById('addMsg').innerHTML = `<p>Saved ${r.codes.length} × ${esc(r.wine)}.</p><a href="api/labels?codes=${r.codes.join(',')}" target="_blank"><button class="big ghost">Print ${r.codes.length} label${r.codes.length>1?'s':''}</button></a>`;
-  } catch (e) { document.getElementById('addMsg').innerHTML = `<p class="sub">${esc(e.message)}</p>`; }
+    const n = r.codes.length;
+    sessionStorage.setItem('justAdded', r.codes.join(','));
+    location.hash = '#/bottle/' + r.codes[0];
+    toast(`Saved ${n} × ${r.wine}.`, `Print ${n} label${n>1?'s':''}`, () => window.open('api/labels?codes=' + r.codes.join(','), '_blank'));
+  } catch (e) {
+    document.getElementById('addMsg').innerHTML = `<p class="sub">${esc(e.message)}</p>`;
+    btn.disabled = false; btn.textContent = 'Save';
+  }
 }
 
 // ---------- Bottle ----------
@@ -204,13 +217,26 @@ async function bottle(code){
       <p><b>Where:</b> ${esc(b.location)}<br><b>Window:</b> ${win}${b.window_source === 'ai' ? ' (AI draft)' : ''}<br>
       <b>Paid:</b> ${money(b.purchase_price, b.currency) || '—'} · <b>Value:</b> ${money(b.est_value, b.currency) || '—'}<br><span class="sub">${esc(code)}</span></p></div>
     ${inCellar ? `<button class="big" onclick="drink('${esc(code)}')">Drink this</button><br><br>
-    <div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><a href="api/labels?codes=${esc(code)}" target="_blank"><button class="ghost" style="width:100%">Print label</button></a></div>` : ''}
+    <div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><a href="api/labels?codes=${esc(code)}" target="_blank"><button class="ghost" style="width:100%">Print label</button></a></div>
+    <p class="sub" style="margin-top:18px">${b.siblings_in_cellar > 1 ? `${b.siblings_in_cellar} bottles of this wine in the cellar. ` : ''}
+      <a href="#" onclick="deleteBottle('${esc(code)}', ${b.wine_id}, ${b.siblings_in_cellar});return false">Delete this bottle</a>
+      ${b.siblings_in_cellar > 1 ? ` · <a href="#" onclick="deleteAll(${b.wine_id}, ${b.siblings_in_cellar});return false">Delete all ${b.siblings_in_cellar}</a>` : ''}</p>` : ''}
     ${b.history.length ? '<h2>History</h2>' + b.history.map(h => `<div class="card"><div class="sub">${new Date(h.when).toLocaleDateString()}${h.rating ? ' · ' + '★'.repeat(h.rating) : ''}</div>${esc(h.note)}</div>`).join('') : ''}`;
 }
 async function drink(code){
   const r = await api(`bottle/${code}/drink`, {method:'POST', body:'{}'});
   toast(`Enjoy! Opened ${r.label}.`, 'Undo', async () => { await api(`bottle/${code}/undo`, {method:'POST'}); bottle(code); });
   bottle(code);
+}
+async function deleteBottle(code, wineId, siblings){
+  if (!confirm('Delete this bottle? This is for mistakes; use Drink for bottles you opened.')) return;
+  await api('bottle/' + code, {method:'DELETE'});
+  toast('Bottle deleted.'); location.hash = '#/cellar';
+}
+async function deleteAll(wineId, n){
+  if (!confirm(`Delete all ${n} unopened bottles of this wine?`)) return;
+  const r = await api(`wine/${wineId}/bottles`, {method:'DELETE'});
+  toast(`Deleted ${r.deleted} bottles.`); location.hash = '#/cellar';
 }
 async function moveBottle(code){
   const ls = await api('locations');
@@ -266,6 +292,21 @@ async function handleCode(raw){
   location.hash = code.startsWith('L') ? '#/location/' + code : '#/bottle/' + code;
 }
 
+// ---------- Settings ----------
+async function settings(){
+  const [st, ls] = await Promise.all([api('settings'), api('locations')]);
+  view.innerHTML = `<h1>Settings</h1>
+    <div class="card"><label>Default place for new bottles</label>
+      <select id="defLoc">${ls.map(l => `<option value="${l.code}" ${l.code === st.default_location_code ? 'selected' : ''}>${esc(l.name)}${l.holding ? ' (holding place)' : ''}</option>`).join('')}</select>
+      <button class="big" onclick="saveSettings()">Save</button><div id="setMsg" class="sub"></div></div>
+    <h2>From the add-on configuration</h2>
+    <div class="card sub">Currency ${esc(st.currency)} · Drink soon within ${st.drink_soon_months} months · Price tiers ${money(st.price_tier_low, st.currency)} and ${money(st.price_tier_high, st.currency)}<br>Change these in Home Assistant: Settings → Add-ons → Stellar Cellar → Configuration.</div>`;
+}
+async function saveSettings(){
+  await api('settings', {method:'POST', body: JSON.stringify({default_location_code: document.getElementById('defLoc').value})});
+  toast('Settings saved.');
+}
+
 // ---------- Router ----------
 async function route(){
   if (!location.hash.startsWith('#/scan')) stopScan();
@@ -275,6 +316,7 @@ async function route(){
     if (page === 'scan') await scan();
     else if (page === 'cellar') await cellar();
     else if (page === 'add') addForm();
+    else if (page === 'settings') await settings();
     else if (page === 'bottle' && arg) await bottle(arg.toUpperCase());
     else if (page === 'location' && arg) await locationPage(arg.toUpperCase());
     else await tonight();

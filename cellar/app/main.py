@@ -11,12 +11,12 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import func
-from sqlmodel import Session, select
+from sqlmodel import Session, delete as sql_delete, select
 
 from . import ai, qr
 from .db import get_session, init_db
 from .logic import build_picks, effective_price, window_status
-from .models import Bottle, Consumption, DrinkingWindow, Location, Wine, utcnow
+from .models import Bottle, Consumption, DrinkingWindow, Location, Setting, Wine, utcnow
 
 SOON = int(os.environ.get("CELLAR_DRINK_SOON_MONTHS", "6"))
 LOW = float(os.environ.get("CELLAR_PRICE_TIER_LOW", "50"))
@@ -28,9 +28,25 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"  # no I, L, O, U
 
 
+HOLDING_CODE = "LNEWARR"   # built-in holding place for bottles without a decided spot
+
+
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
+    from .db import engine
+    with Session(engine) as session:
+        holding = session.exec(select(Location).where(Location.code == HOLDING_CODE)).first()
+        if not holding:
+            holding = Location(name="New arrivals", code=HOLDING_CODE)
+            session.add(holding)
+            session.commit()
+            session.refresh(holding)
+        # bottles saved before the holding place existed ("Decide later" left them nowhere)
+        for b in session.exec(select(Bottle).where(Bottle.location_id == None)).all():  # noqa: E711
+            b.location_id = holding.id
+            session.add(b)
+        session.commit()
     yield
 
 
@@ -105,6 +121,17 @@ def get_location_or_404(session: Session, code: str) -> Location:
     if not loc:
         raise HTTPException(404, "Place not found")
     return loc
+
+
+def get_setting(session: Session, key: str, default: str = "") -> str:
+    row = session.get(Setting, key)
+    return row.value if row else default
+
+
+def set_setting(session: Session, key: str, value: str):
+    row = session.get(Setting, key) or Setting(key=key)
+    row.value = value
+    session.add(row)
 
 
 def in_cellar(session: Session):
@@ -258,7 +285,7 @@ def add_bottles(body: AddBottles, session: Session = Depends(get_session)):
         raise HTTPException(400, "Quantity must be between 1 and 24")
     if not body.producer.strip():
         raise HTTPException(400, "Producer is required")
-    loc = get_location_or_404(session, body.location_code) if body.location_code else None
+    loc = get_location_or_404(session, body.location_code or HOLDING_CODE)
 
     wine = session.exec(
         select(Wine).where(
@@ -285,7 +312,7 @@ def add_bottles(body: AddBottles, session: Session = Depends(get_session)):
     codes = []
     for _ in range(body.quantity):
         code = new_code(session, "B", Bottle)
-        session.add(Bottle(code=code, wine_id=wine_id, location_id=loc.id if loc else None,
+        session.add(Bottle(code=code, wine_id=wine_id, location_id=loc.id,
                            purchase_price=body.purchase_price, est_value=body.est_value,
                            currency=CURRENCY))
         codes.append(code)
@@ -302,8 +329,12 @@ def bottle_detail(code: str, session: Session = Depends(get_session)):
         select(Consumption).where(Consumption.bottle_id == b.id, Consumption.undone == False)  # noqa: E712
         .order_by(Consumption.id.desc())
     ).all()
+    siblings = len(session.exec(
+        select(Bottle).where(Bottle.wine_id == wine.id, Bottle.status == "in_cellar")
+    ).all())
     return {
         **candidate(session, b),
+        "wine_id": wine.id, "siblings_in_cellar": siblings,
         "producer": wine.producer, "name": wine.name, "vintage": wine.vintage,
         "region": wine.region, "country": wine.country, "color": wine.color,
         "special_occasion": wine.special_occasion,
@@ -372,6 +403,66 @@ def move_batch(body: MoveBatchBody, session: Session = Depends(get_session)):
     return {"ok": True, "moved": moved, "location": loc.name}
 
 
+@app.delete("/api/bottle/{code}")
+def delete_bottle(code: str, session: Session = Depends(get_session)):
+    b = get_bottle_or_404(session, code)
+    wine_id = b.wine_id
+    session.exec(sql_delete(Consumption).where(Consumption.bottle_id == b.id))
+    session.delete(b)
+    session.commit()
+    _prune_wine(session, wine_id)
+    return {"ok": True}
+
+
+@app.delete("/api/wine/{wine_id}/bottles")
+def delete_wine_bottles(wine_id: int, session: Session = Depends(get_session)):
+    """Remove every unopened bottle of a wine (for accidental duplicates)."""
+    bottles = session.exec(
+        select(Bottle).where(Bottle.wine_id == wine_id, Bottle.status == "in_cellar")
+    ).all()
+    for b in bottles:
+        session.exec(sql_delete(Consumption).where(Consumption.bottle_id == b.id))
+        session.delete(b)
+    session.commit()
+    _prune_wine(session, wine_id)
+    return {"ok": True, "deleted": len(bottles)}
+
+
+def _prune_wine(session: Session, wine_id: int):
+    """Drop a wine record once it has no bottles at all (so it stops appearing in search)."""
+    if not session.exec(select(Bottle).where(Bottle.wine_id == wine_id)).first():
+        session.exec(sql_delete(DrinkingWindow).where(DrinkingWindow.wine_id == wine_id))
+        wine = session.get(Wine, wine_id)
+        if wine:
+            session.delete(wine)
+        session.commit()
+
+
+# ---------- settings ----------
+
+class SettingsBody(BaseModel):
+    default_location_code: Optional[str] = None
+
+
+@app.get("/api/settings")
+def read_settings(session: Session = Depends(get_session)):
+    return {
+        "default_location_code": get_setting(session, "default_location_code", HOLDING_CODE),
+        "holding_code": HOLDING_CODE,
+        "currency": CURRENCY, "drink_soon_months": SOON,
+        "price_tier_low": LOW, "price_tier_high": HIGH,
+    }
+
+
+@app.post("/api/settings")
+def write_settings(body: SettingsBody, session: Session = Depends(get_session)):
+    if body.default_location_code is not None:
+        get_location_or_404(session, body.default_location_code)
+        set_setting(session, "default_location_code", body.default_location_code.upper())
+    session.commit()
+    return read_settings(session)
+
+
 # ---------- locations ----------
 
 @app.get("/api/locations")
@@ -381,7 +472,8 @@ def list_locations(session: Session = Depends(get_session)):
         count = len(session.exec(
             select(Bottle).where(Bottle.location_id == loc.id, Bottle.status == "in_cellar")
         ).all())
-        out.append({"code": loc.code, "name": loc.name, "count": count})
+        out.append({"code": loc.code, "name": loc.name, "count": count,
+                    "holding": loc.code == HOLDING_CODE})
     return out
 
 

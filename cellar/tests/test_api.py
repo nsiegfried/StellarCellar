@@ -71,3 +71,29 @@ def test_label_formats():
         full = client.get(f"/api/labels?codes={code}&fmt=full").text
         assert f'data-payload="http://testserver/q/{code}"' in full
         assert client.get(f"/api/labels?codes={code}&fmt=huge").status_code == 400
+
+
+def test_holding_place_delete_and_settings():
+    with TestClient(app) as client:
+        locs = client.get("/api/locations").json()
+        holding = next(l for l in locs if l["holding"])
+        assert holding["name"] == "New arrivals"
+
+        # "Decide later" lands in the holding place, never nowhere
+        r = client.post("/api/bottles", json={"producer": "Dup", "quantity": 4}).json()
+        assert client.get(f"/api/bottle/{r['codes'][0]}").json()["location"] == "New arrivals"
+        assert client.get(f"/api/bottle/{r['codes'][0]}").json()["siblings_in_cellar"] == 4
+
+        # delete one, then the rest
+        assert client.delete(f"/api/bottle/{r['codes'][0]}").json()["ok"]
+        assert client.get(f"/api/bottle/{r['codes'][0]}").status_code == 404
+        wine_id = client.get(f"/api/bottle/{r['codes'][1]}").json()["wine_id"]
+        assert client.delete(f"/api/wine/{wine_id}/bottles").json()["deleted"] == 3
+        assert client.get("/api/search?q=dup") == [] or client.get("/api/search?q=dup").json() == []
+
+        # default place setting
+        rack = client.post("/api/locations", json={"name": "Rack B"}).json()
+        assert client.get("/api/settings").json()["default_location_code"] == holding["code"]
+        s = client.post("/api/settings", json={"default_location_code": rack["code"]}).json()
+        assert s["default_location_code"] == rack["code"]
+        assert client.post("/api/settings", json={"default_location_code": "LNOPE99"}).status_code == 404

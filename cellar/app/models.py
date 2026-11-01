@@ -56,3 +56,8 @@ class Consumption(SQLModel, table=True):
     rating: Optional[int] = None
     note: str = ""
     undone: bool = False
+
+
+class Setting(SQLModel, table=True):
+    key: str = Field(primary_key=True)
+    value: str = ""
