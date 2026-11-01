@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stellar Cellar</title>
+<style>
+:root{--bg:#faf7f2;--card:#fff;--ink:#2b2420;--muted:#7a6f68;--line:#e6ddd3;--wine:#7b1e3a;--ok:#2e7d32;--warn:#c77700;--bad:#b3261e;--grey:#8a8a8a}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1614;--card:#241f1c;--ink:#f2ebe4;--muted:#b3a79e;--line:#3a322d;--wine:#d6557a}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);padding-top:env(safe-area-inset-top)}
+main{padding:14px 14px 96px;max-width:720px;margin:0 auto}
+h1{font-size:22px;margin:6px 0 14px}
+h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.title{font-weight:600}
+.sub{color:var(--muted);font-size:13px}
+.badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;color:#fff;white-space:nowrap}
+.ready{background:var(--ok)}.drink_soon{background:var(--warn)}.past_peak{background:var(--bad)}.too_young,.unknown{background:var(--grey)}
+button{font:inherit;border:0;border-radius:12px;padding:12px 16px;cursor:pointer;background:var(--wine);color:#fff;font-weight:600}
+button.ghost{background:transparent;color:var(--wine);border:1px solid var(--line)}
+button.big{width:100%;font-size:18px;padding:16px}
+input,select,textarea{font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);margin:4px 0 10px}
+label{font-size:13px;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:flex-end;padding:6px 0 calc(8px + env(safe-area-inset-bottom))}
+nav a{flex:1;text-align:center;text-decoration:none;color:var(--muted);font-size:12px;padding:6px 0}
+nav a.on{color:var(--wine);font-weight:700}
+nav a.scan{flex:0 0 84px;margin-top:-28px}
+nav a.scan span{display:inline-block;width:66px;height:66px;line-height:66px;border-radius:50%;background:var(--wine);color:#fff;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#toast{position:fixed;left:14px;right:14px;bottom:92px;background:var(--ink);color:var(--bg);padding:14px;border-radius:12px;display:none;justify-content:space-between;align-items:center;gap:12px;z-index:9}
+#toast button{background:var(--bg);color:var(--ink);padding:8px 12px}
+video{width:100%;border-radius:14px;background:#000;max-height:60vh}
+.tap{cursor:pointer}
+.empty{color:var(--muted);text-align:center;padding:20px}
+.pick{border-left:4px solid var(--wine)}
+.summary{display:flex;gap:10px;flex-wrap:wrap}
+.summary .card{flex:1;min-width:90px;text-align:center;margin:0}
+.summary .n{font-size:24px;font-weight:700}
+</style>
+</head>
+<body>
+<main id="view"></main>
+<nav>
+  <a href="#/tonight" data-tab="tonight">Tonight</a>
+  <a href="#/scan" class="scan"><span>Scan</span></a>
+  <a href="#/cellar" data-tab="cellar">Cellar</a>
+</nav>
+<div id="toast"><span id="toastText"></span><button id="toastBtn"></button></div>
+
+<script>
+// All requests are relative so the app works under Home Assistant Ingress.
+const api = async (path, opts={}) => {
+  const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
+  if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
+  return r.json();
+};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const view = document.getElementById('view');
+const STATUS = {ready:'Ready', drink_soon:'Drink soon', past_peak:'Past peak', too_young:'Wait', unknown:'No window'};
+const badge = s => `<span class="badge ${esc(s)}">${STATUS[s] || esc(s)}</span>`;
+const money = (v, cur) => v == null ? '' : new Intl.NumberFormat(undefined,{style:'currency',currency:cur||'USD',maximumFractionDigits:0}).format(v);
+
+let toastTimer;
+function toast(text, btnLabel, onClick){
+  const t = document.getElementById('toast'), b = document.getElementById('toastBtn');
+  document.getElementById('toastText').textContent = text;
+  b.style.display = btnLabel ? '' : 'none'; b.textContent = btnLabel || '';
+  b.onclick = () => { onClick && onClick(); hideToast(); };
+  t.style.display = 'flex'; clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 10000);
+}
+function hideToast(){ document.getElementById('toast').style.display = 'none'; }
+
+const bottleRow = (c, cur) => `
+  <div class="card tap" onclick="location.hash='#/bottle/${esc(c.code)}'">
+    <div class="row"><div><div class="title">${esc(c.label)}</div>
+      <div class="sub">${esc(c.location)}${c.price != null ? ' · ' + money(c.price, cur) : ''}${c.reason ? '<br>' + esc(c.reason) : ''}</div></div>
+      ${badge(c.status)}</div>
+  </div>`;
+
+// ---------- Tonight ----------
+async function tonight(){
+  const [p, s] = await Promise.all([api('picks'), api('summary')]);
+  const cur = p.currency;
+  const section = (title, items, empty) => `<h2>${title}</h2>` + (items.length ? items.map(c => bottleRow(c, cur)).join('') : `<div class="card empty">${empty}</div>`);
+  view.innerHTML = `
+    <h1>Tonight</h1>
+    <div class="summary">
+      <div class="card"><div class="n">${s.total}</div><div class="sub">bottles</div></div>
+      <div class="card"><div class="n">${s.ready}</div><div class="sub">ready</div></div>
+      <div class="card"><div class="n">${s.drink_soon}</div><div class="sub">drink soon</div></div>
+    </div>
+    <h2>Ask for a suggestion</h2>
+    <div class="card">
+      <label>What are we eating?</label><input id="food" placeholder="Roast chicken, pizza, steak…">
+      <div class="grid2"><div><label>Budget</label><select id="budget">
+        <option value="">Any</option><option value="${p.thresholds.low}">Under ${money(p.thresholds.low,cur)}</option><option value="${p.thresholds.high}">Under ${money(p.thresholds.high,cur)}</option></select></div>
+        <div><label>Occasion</label><input id="occasion" placeholder="Weeknight, guests…"></div></div>
+      <button class="big" onclick="recommend()">Suggest</button>
+      <div id="recs"></div>
+    </div>
+    ${section('Under ' + money(p.thresholds.low,cur), p.under_low, 'No priced bottles in this range are ready.')}
+    ${section('Under ' + money(p.thresholds.high,cur), p.under_high, 'No priced bottles in this range are ready.')}
+    ${section('Special occasion', p.special, 'Mark a wine as special or add a bottle over ' + money(p.thresholds.high,cur) + '.')}
+    ${section('Use soon', p.use_soon, 'Nothing is closing its window soon.')}
+    ${section('Hold', p.hold, 'Nothing is waiting to come of age.')}`;
+}
+async function recommend(){
+  const recs = document.getElementById('recs'); recs.innerHTML = '<div class="empty">Thinking…</div>';
+  const budget = document.getElementById('budget').value;
+  try {
+    const r = await api('recommend', {method:'POST', body: JSON.stringify({food: food.value, occasion: occasion.value, budget_max: budget ? Number(budget) : null})});
+    recs.innerHTML = `<p>${esc(r.summary)}</p>` + r.picks.map(c => bottleRow(c)).join('') + (r.source === 'rules' ? '<div class="sub">Rule-based picks (no API key set or Claude unavailable).</div>' : '');
+  } catch (e) { recs.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+// ---------- Cellar ----------
+async function cellar(){
+  const locs = await api('locations');
+  view.innerHTML = `<h1>Cellar</h1>
+    <input id="q" placeholder="Search producer or wine" oninput="searchDebounced()"><div id="results"></div>
+    <h2>Places</h2>${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="title">${esc(l.name)}</div><div class="sub">${l.count} bottles</div></div></div>`).join('') || '<div class="card empty">No places yet.</div>'}
+    <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
+    ${locs.length ? `<p class="sub">Print place labels: <a href="api/labels?codes=${locs.map(l=>l.code).join(',')}" target="_blank">open sheet</a></p>` : ''}`;
+}
+let st; function searchDebounced(){ clearTimeout(st); st = setTimeout(search, 250); }
+async function search(){
+  const q = document.getElementById('q').value.trim(); const box = document.getElementById('results');
+  if (!q) { box.innerHTML = ''; return; }
+  const r = await api('search?q=' + encodeURIComponent(q));
+  box.innerHTML = r.length ? r.map(c => bottleRow(c)).join('') : '<div class="card empty">No bottles match.</div>';
+}
+async function addPlace(){
+  const name = prompt('Name of the place (e.g. Kitchen fridge, Rack A)'); if (!name) return;
+  await api('locations', {method:'POST', body: JSON.stringify({name})}); cellar();
+}
+
+// ---------- Add ----------
+function addForm(){
+  const y = new Date().getFullYear();
+  view.innerHTML = `<h1>Add bottles</h1>
+    <input type="file" id="labelFile" accept="image/*" capture="environment" style="display:none" onchange="scanLabelFile(this.files[0])">
+    <button class="big ghost" onclick="labelFile.click()">📷 Photo the label to fill this in</button>
+    <div id="scanMsg" class="sub" style="margin:8px 0"></div>
+    <div class="card">
+    <label>Producer *</label><input id="producer" placeholder="Château Example">
+    <label>Wine name</label><input id="name" placeholder="Cuvée or vineyard">
+    <div class="grid2"><div><label>Vintage</label><input id="vintage" type="number" placeholder="${y-3}"></div>
+      <div><label>Color</label><select id="color"><option value="red">Red</option><option value="white">White</option><option value="rose">Rosé</option><option value="sparkling">Sparkling</option><option value="dessert">Dessert</option><option value="fortified">Fortified</option></select></div></div>
+    <label>Region</label><input id="region" placeholder="Napa Valley">
+    <div class="grid2"><div><label>How many</label><input id="qty" type="number" value="1" min="1" max="24"></div>
+      <div><label>Price paid (each)</label><input id="price" type="number" step="0.01"></div></div>
+    <div class="grid2"><div><label>Drink from (year)</label><input id="from" type="number"></div><div><label>Drink until (year)</label><input id="to" type="number"></div></div>
+    <label>Place</label><select id="loc"><option value="">Decide later</option></select>
+    <label><input type="checkbox" id="special" style="width:auto;margin-right:8px">Special occasion wine</label><br><br>
+    <button class="big" onclick="saveBottles()">Save</button><div id="addMsg"></div></div>`;
+  api('locations').then(ls => ls.forEach(l => loc.add(new Option(l.name, l.code))));
+  if (pendingLabelFile) { const f = pendingLabelFile; pendingLabelFile = null; scanLabelFile(f); }
+}
+let pendingLabelFile = null;
+async function downsize(file, maxEdge = 1600){
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+}
+async function scanLabelFile(file){
+  if (!file) return;
+  const msg = document.getElementById('scanMsg'); msg.textContent = 'Reading the label…';
+  try {
+    const image = await downsize(file);
+    const d = await api('scan-label', {method:'POST', body: JSON.stringify({image, media_type:'image/jpeg'})});
+    producer.value = d.producer; name.value = d.name; region.value = d.region; color.value = d.color;
+    document.getElementById('vintage').value = d.vintage ?? '';
+    document.getElementById('from').value = d.drink_from ?? ''; document.getElementById('to').value = d.drink_to ?? '';
+    const bits = [`Read with ${d.confidence} confidence. Check the fields, then Save.`];
+    if (d.varietals.length) bits.push('Grapes: ' + d.varietals.join(', '));
+    if (d.drink_from || d.drink_to) bits.push('Drinking window is an AI estimate.');
+    if (d.note) bits.push(d.note);
+    msg.innerHTML = bits.map(esc).join('<br>');
+  } catch (e) { msg.textContent = e.message; }
+}
+const num = id => { const v = document.getElementById(id).value; return v === '' ? null : Number(v); };
+async function saveBottles(){
+  const body = {producer: producer.value, name: name.value, vintage: num('vintage'), color: color.value, region: region.value,
+    quantity: num('qty') || 1, purchase_price: num('price'), drink_from: num('from'), drink_to: num('to'),
+    location_code: loc.value || null, special_occasion: special.checked};
+  try {
+    const r = await api('bottles', {method:'POST', body: JSON.stringify(body)});
+    document.getElementById('addMsg').innerHTML = `<p>Saved ${r.codes.length} × ${esc(r.wine)}.</p><a href="api/labels?codes=${r.codes.join(',')}" target="_blank"><button class="big ghost">Print ${r.codes.length} label${r.codes.length>1?'s':''}</button></a>`;
+  } catch (e) { document.getElementById('addMsg').innerHTML = `<p class="sub">${esc(e.message)}</p>`; }
+}
+
+// ---------- Bottle ----------
+async function bottle(code){
+  let b; try { b = await api('bottle/' + code); } catch (e) { view.innerHTML = `<h1>Not found</h1><p>${esc(e.message)}</p>`; return; }
+  const win = b.window_from || b.window_to ? `${b.window_from || '…'} to ${b.window_to || '…'}` : 'No drinking window on record';
+  const inCellar = b.status !== 'consumed';
+  view.innerHTML = `<h1>${esc(b.label)}</h1>
+    <div class="card"><div class="row"><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div>${inCellar ? badge(b.status) : '<span class="badge unknown">Opened</span>'}</div>
+      <p><b>Where:</b> ${esc(b.location)}<br><b>Window:</b> ${win}${b.window_source === 'ai' ? ' (AI draft)' : ''}<br>
+      <b>Paid:</b> ${money(b.purchase_price, b.currency) || '—'} · <b>Value:</b> ${money(b.est_value, b.currency) || '—'}<br><span class="sub">${esc(code)}</span></p></div>
+    ${inCellar ? `<button class="big" onclick="drink('${esc(code)}')">Drink this</button><br><br>
+    <div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><a href="api/labels?codes=${esc(code)}" target="_blank"><button class="ghost" style="width:100%">Print label</button></a></div>` : ''}
+    ${b.history.length ? '<h2>History</h2>' + b.history.map(h => `<div class="card"><div class="sub">${new Date(h.when).toLocaleDateString()}${h.rating ? ' · ' + '★'.repeat(h.rating) : ''}</div>${esc(h.note)}</div>`).join('') : ''}`;
+}
+async function drink(code){
+  const r = await api(`bottle/${code}/drink`, {method:'POST', body:'{}'});
+  toast(`Enjoy! Opened ${r.label}.`, 'Undo', async () => { await api(`bottle/${code}/undo`, {method:'POST'}); bottle(code); });
+  bottle(code);
+}
+async function moveBottle(code){
+  const ls = await api('locations');
+  const name = prompt('Move to which place?\n' + ls.map((l,i) => `${i+1}. ${l.name}`).join('\n') + '\n\nType the number, or scan the place label instead.');
+  const l = ls[Number(name) - 1]; if (!l) return;
+  await api(`bottle/${code}/move`, {method:'POST', body: JSON.stringify({location_code: l.code})});
+  toast(`Moved to ${l.name}.`); bottle(code);
+}
+
+// ---------- Location ----------
+async function locationPage(code){
+  const l = await api('location/' + code);
+  view.innerHTML = `<h1>${esc(l.name)}</h1><p class="sub">${l.bottles.length} bottles · ${esc(code)}</p>
+    <button class="big ghost" onclick="putHere('${esc(code)}')">Put bottles here (scan)</button>
+    ${l.bottles.map(c => bottleRow(c)).join('') || '<div class="card empty">Empty.</div>'}`;
+}
+function putHere(code){ sessionStorage.setItem('moveTo', code); location.hash = '#/scan'; }
+
+// ---------- Scan ----------
+let stream, scanning;
+async function scan(){
+  const moveTo = sessionStorage.getItem('moveTo');
+  view.innerHTML = `<h1>${moveTo ? 'Scan bottles to move' : 'Scan'}</h1>
+    ${moveTo ? `<p class="sub">Each scanned bottle moves immediately. <a href="#" onclick="sessionStorage.removeItem('moveTo');scan();return false">Done</a></p>` : '<p class="sub">Point at a bottle or place label.</p>'}
+    <video id="cam" autoplay playsinline muted></video><div id="camMsg" class="sub"></div>
+    <input type="file" id="labelFile" accept="image/*" capture="environment" style="display:none" onchange="pendingLabelFile=this.files[0];location.hash='#/add'">
+    <button class="big ghost" onclick="labelFile.click()">📷 No QR yet? Photo the wine label</button>
+    <div class="card"><label>Or type the code</label><input id="manual" placeholder="B7K3QX9 or L4M9TQ2" autocapitalize="characters"><button class="big ghost" onclick="handleCode(manual.value)">Go</button></div>`;
+  const msg = document.getElementById('camMsg');
+  if (!('BarcodeDetector' in window)) { msg.textContent = 'This browser cannot scan in-app. Use the phone camera app on the label, or type the code.'; return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const v = document.getElementById('cam'); v.srcObject = stream;
+    const det = new BarcodeDetector({formats:['qr_code']}); scanning = true; let last = '', lastAt = 0;
+    const loop = async () => {
+      if (!scanning) return;
+      try { const codes = await det.detect(v); for (const c of codes) { const m = c.rawValue.match(/\/q\/([A-Z0-9]+)/i) || c.rawValue.match(/^([BL][A-Z0-9]{6})$/i); if (m && (m[1] !== last || Date.now() - lastAt > 3000)) { last = m[1]; lastAt = Date.now(); if (navigator.vibrate) navigator.vibrate(60); await handleCode(m[1]); } } } catch (_) {}
+      requestAnimationFrame(loop);
+    };
+    v.onloadedmetadata = loop;
+  } catch (e) { msg.textContent = 'Camera unavailable: ' + e.message + '. Type the code below.'; }
+}
+function stopScan(){ scanning = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
+async function handleCode(raw){
+  const code = (raw || '').trim().toUpperCase().replace(/.*\/Q\//, '');
+  if (!code) return;
+  const moveTo = sessionStorage.getItem('moveTo');
+  if (moveTo && code.startsWith('B')) {
+    try { const r = await api(`bottle/${code}/move`, {method:'POST', body: JSON.stringify({location_code: moveTo})}); toast(`Moved to ${r.location}. Keep scanning or tap Done.`); } catch (e) { toast(e.message); }
+    return;
+  }
+  stopScan();
+  location.hash = code.startsWith('L') ? '#/location/' + code : '#/bottle/' + code;
+}
+
+// ---------- Router ----------
+async function route(){
+  if (!location.hash.startsWith('#/scan')) stopScan();
+  const [, page, arg] = location.hash.split('/');
+  document.querySelectorAll('nav a[data-tab]').forEach(a => a.classList.toggle('on', a.dataset.tab === page));
+  try {
+    if (page === 'scan') await scan();
+    else if (page === 'cellar') await cellar();
+    else if (page === 'add') addForm();
+    else if (page === 'bottle' && arg) await bottle(arg.toUpperCase());
+    else if (page === 'location' && arg) await locationPage(arg.toUpperCase());
+    else await tonight();
+  } catch (e) { view.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; }
+}
+window.addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>
