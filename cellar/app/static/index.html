@@ -174,12 +174,34 @@ async function downsize(file, maxEdge = 1600){
   c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.85).split(',')[1];
 }
+async function readLabel(file, msgId){
+  const msg = document.getElementById(msgId); msg.textContent = 'Reading the label…';
+  const image = await downsize(file);
+  return api('scan-label', {method:'POST', body: JSON.stringify({image, media_type:'image/jpeg'})});
+}
+async function scanTastingLabel(file){
+  if (!file) return;
+  const msg = document.getElementById('tscanMsg');
+  try {
+    const d = await readLabel(file, 'tscanMsg');
+    const name = [d.producer, d.name].filter(Boolean).join(' ');
+    if (name) document.getElementById('tw').value = name;
+    if (d.vintage) document.getElementById('tv').value = d.vintage;
+    const bits = [`Read with ${d.confidence} confidence.`];
+    if (d.region) bits.push(d.region + (d.country ? ', ' + d.country : ''));
+    if (d.varietals.length) bits.push('Grapes: ' + d.varietals.join(', '));
+    if (d.note) bits.push(d.note);
+    msg.innerHTML = bits.map(esc).join(' · ');
+    // show whether this wine is already in the journal or cellar
+    const prior = await api('journal?q=' + encodeURIComponent(d.producer || name));
+    if (prior.length) msg.innerHTML += `<br><b>Already in the journal:</b> ${prior.slice(0,3).map(p => esc(p.wine) + (p.score != null ? ' (' + p.score + ')' : '')).join('; ')}`;
+  } catch (e) { msg.textContent = e.message; }
+}
 async function scanLabelFile(file){
   if (!file) return;
-  const msg = document.getElementById('scanMsg'); msg.textContent = 'Reading the label…';
+  const msg = document.getElementById('scanMsg');
   try {
-    const image = await downsize(file);
-    const d = await api('scan-label', {method:'POST', body: JSON.stringify({image, media_type:'image/jpeg'})});
+    const d = await readLabel(file, 'scanMsg');
     producer.value = d.producer; name.value = d.name; region.value = d.region; color.value = d.color;
     document.getElementById('vintage').value = d.vintage ?? '';
     document.getElementById('from').value = d.drink_from ?? ''; document.getElementById('to').value = d.drink_to ?? '';
@@ -333,7 +355,11 @@ async function journalNew(code){
   let pre = {};
   if (code) { const b = await api('bottle/' + code); pre = {wine: b.producer + (b.name ? ' ' + b.name : ''), vintage: b.vintage}; }
   const st = await api('settings');
-  view.innerHTML = `<h1>Add a tasting</h1><div class="card">
+  view.innerHTML = `<h1>Add a tasting</h1>
+    <input type="file" id="tLabelFile" accept="image/*" capture="environment" style="display:none" onchange="scanTastingLabel(this.files[0])">
+    <button class="big ghost" onclick="tLabelFile.click()">📷 Photo the label</button>
+    <div id="tscanMsg" class="sub" style="margin:8px 0"></div>
+    <div class="card">
     <label>Wine *</label><input id="tw" value="${esc(pre.wine || '')}" placeholder="Producer and wine">
     <div class="grid2"><div><label>Vintage</label><input id="tv" type="number" value="${pre.vintage || ''}"></div><div><label>Who tasted</label><input id="tt" value="${esc(st.default_taster || '')}"></div></div>
     <label>Score (100-point, leave blank if unsure)</label><input id="ts" type="number" min="0" max="100">
