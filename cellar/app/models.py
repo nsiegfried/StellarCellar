@@ -32,8 +32,10 @@ class Bottle(SQLModel, table=True):
     code: str = Field(index=True, unique=True)
     wine_id: int = Field(foreign_key="wine.id", index=True)
     location_id: Optional[int] = Field(default=None, foreign_key="location.id")
-    status: str = "in_cellar"  # in_cellar | incoming | consumed
+    status: str = "in_cellar"  # in_cellar | incoming | consumed | gifted
     tags: str = ""             # comma-separated, e.g. "collector,A+"
+    reserved_for: str = ""     # person this bottle is held for; "" means it is ours to open
+    reserved_note: str = ""    # occasion or reason
     purchase_price: Optional[float] = None
     est_value: Optional[float] = None
     currency: str = "USD"
@@ -51,9 +53,13 @@ class DrinkingWindow(SQLModel, table=True):
 
 
 class Consumption(SQLModel, table=True):
+    """A bottle leaving the cellar: opened or given away."""
     id: Optional[int] = Field(default=None, primary_key=True)
     bottle_id: int = Field(foreign_key="bottle.id", index=True)
     occurred_at: datetime = Field(default_factory=utcnow)
+    reason: str = "drank"      # drank | gift
+    recipient: str = ""        # for gifts
+    occasion: str = ""
     rating: Optional[int] = None
     note: str = ""
     undone: bool = False

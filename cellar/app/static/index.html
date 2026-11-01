@@ -32,7 +32,7 @@ h2 .sub{font-weight:400}
 .meta{color:var(--muted);font-size:var(--fs-sub);display:flex;gap:10px;flex-wrap:wrap;margin-top:3px}
 .meta b{color:var(--ink)}
 .badge{font-size:var(--fs-badge);font-weight:700;padding:5px 10px;border-radius:999px;color:#fff;white-space:nowrap;flex:none}
-.ready{background:var(--ok)}.drink_soon{background:var(--warn)}.past_peak{background:var(--bad)}.too_young,.unknown{background:var(--grey)}.opened{background:var(--grey)}
+.ready{background:var(--ok)}.drink_soon{background:var(--warn)}.past_peak{background:var(--bad)}.too_young,.unknown{background:var(--grey)}.opened,.gifted{background:var(--grey)}
 .score{font-size:var(--fs-badge);font-weight:700;padding:5px 10px;border-radius:8px;color:#fff;white-space:nowrap;flex:none}
 .s90{background:var(--gold)}.s80{background:var(--ok)}.s70{background:var(--grey)}.s0{background:var(--bad)}.sv{background:var(--wine)}
 .tap{cursor:pointer}
@@ -126,7 +126,7 @@ const api = async (path, opts={}) => {
 };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const view = document.getElementById('view');
-const STATUS = {ready:'Ready', drink_soon:'Drink soon', past_peak:'Past peak', too_young:'Wait', unknown:'No window', opened:'Opened'};
+const STATUS = {ready:'Ready', drink_soon:'Drink soon', past_peak:'Past peak', too_young:'Wait', unknown:'No window', opened:'Opened', gifted:'Given away'};
 const badge = s => `<span class="badge ${esc(s)}">${STATUS[s] || esc(s)}</span>`;
 const scoreClass = s => s == null ? 'sv' : s >= 90 ? 's90' : s >= 80 ? 's80' : s >= 70 ? 's70' : 's0';
 const scoreTag = (s, v) => s != null ? `<span class="score ${scoreClass(s)}">${s}</span>` : v ? `<span class="score sv">${esc(v)}</span>` : '';
@@ -178,7 +178,7 @@ const bottleRow = c => `
   <div class="card tap" onclick="location.hash='#/bottle/${esc(c.code)}'">
     <div class="row"><div class="col">
       <div class="title">${esc(c.label)}${c.count > 1 ? ` <span class="sub">×${c.count}</span>` : ''}</div>
-      <div class="meta"><span>${esc(c.location)}</span>${c.price != null ? `<span>${money(c.price, CUR)}</span>` : ''}${c.score != null ? `<span><b>${c.score}</b>${c.taster ? ' ' + esc(c.taster) : ''}</span>` : ''}</div>
+      <div class="meta"><span>${esc(c.location)}</span>${c.price != null ? `<span>${money(c.price, CUR)}</span>` : ''}${c.score != null ? `<span><b>${c.score}</b>${c.taster ? ' ' + esc(c.taster) : ''}</span>` : ''}${c.reserved_for ? `<span class="score sv" style="padding:2px 8px">Held for ${esc(c.reserved_for)}</span>` : ''}</div>
       ${c.reason ? `<div class="sub" style="margin-top:4px">${esc(c.reason)}</div>` : ''}
     </div>${badge(c.status)}</div>
   </div>`;
@@ -255,11 +255,12 @@ let showValue = false;
 async function toggleValue(){
   showValue = !showValue;
   const box = document.getElementById('valueBox'); const btn = document.getElementById('valueBtn');
-  if (showValue) { const s = await api('summary'); box.innerHTML = `<div class="card" style="text-align:center"><div style="font-size:calc(var(--fs) * 1.6);font-weight:700">${money(s.value, s.currency)}</div><div class="sub">estimated value of ${s.total} bottles in the cellar</div></div>`; btn.textContent = 'Hide value'; }
+  if (showValue) { const s = await api('summary'); box.innerHTML = `<div class="card" style="text-align:center"><div style="font-size:calc(var(--fs) * 1.6);font-weight:700">${money(s.value, s.currency)}</div><div class="sub">estimated value of ${s.total} bottles in the cellar</div>${s.held ? `<div class="meta" style="justify-content:center;margin-top:8px"><span>${money(s.own_value, s.currency)} ours</span><span>${money(s.held_value, s.currency)} held for others (${s.held})</span></div>` : ''}</div>`; btn.textContent = 'Hide value'; }
   else { box.innerHTML = ''; btn.textContent = 'Show cellar value'; }
 }
 async function cellar(){
-  const [locs, inc, st] = await Promise.all([api('locations'), api('incoming'), api('settings')]);
+  const [locs, inc, st, heldG, giftsL] = await Promise.all([api('locations'), api('incoming'), api('settings'), api('held'), api('gifts')]);
+  const heldN = heldG.reduce((a,g) => a + g.bottles.length, 0);
   CUR = st.currency; showValue = false;
   topbar('Cellar', {action:{icon:'＋', label:'Add bottles', onclick:"location.hash='#/add'"}});
   const total = locs.reduce((a,l) => a + l.count, 0);
@@ -271,6 +272,8 @@ async function cellar(){
     <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
     ${inc.length ? `<h2>On order <span class="sub">${inc.length}</span></h2>${inc.map(bottleRow).join('')}` : ''}
     <h2>More</h2>
+    <div class="card tap row" onclick="location.hash='#/held'"><div class="title">Held for others</div><div class="sub">${heldN} bottle${heldN===1?'':'s'} ›</div></div>
+    <div class="card tap row" onclick="location.hash='#/gifts'"><div class="title">Gifts given</div><div class="sub">${giftsL.length} ›</div></div>
     <div id="valueBox"></div><button class="ghost" id="valueBtn" style="width:100%" onclick="toggleValue()">Show cellar value</button>
     ${locs.length ? `<p class="sub" style="text-align:center">Print place labels: <a href="api/labels?codes=${locs.map(l=>l.code).join(',')}&fmt=neck" target="_blank">open sheet</a></p>` : ''}`;
 }
@@ -366,12 +369,13 @@ async function bottle(code){
   topbar(b.label, {back:'#/cellar', noGear:true});
   view.innerHTML = `
     <div class="card">
-      <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div></div>${badge(inCellar ? b.status : incoming ? 'unknown' : 'opened')}</div>
+      <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div></div>${badge(inCellar ? b.status : incoming ? 'unknown' : b.bottle_status === 'gifted' ? 'gifted' : 'opened')}</div>
+      ${b.reserved_for ? `<div class="banner" style="margin:10px 0 0"><div>Held for ${esc(b.reserved_for)}${b.reserved_note ? `<div class="sub" style="color:#fff;opacity:.9">${esc(b.reserved_note)}</div>` : ''}</div><button onclick="releaseHold('${esc(code)}')">Release</button></div>` : ''}
       <div class="meta" style="margin:10px 0 14px"><span>📍 <b>${esc(b.location)}</b></span>${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
-      ${inCellar ? `<button class="big" id="drinkBtn" onclick="drink('${esc(code)}')">Drink this</button>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
+      ${inCellar ? `<div class="grid2"><button class="big" id="drinkBtn" onclick="drink('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Drink this</button><button class="big ghost" id="giftBtn" onclick="giftBottle('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Gift this</button></div>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
     </div>
     ${inCellar ? `<div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><button class="ghost" onclick="window.open('api/labels?codes=${esc(code)}','_blank')">Print label</button></div>` : ''}
-    <button class="ghost" style="width:100%;margin-top:10px" onclick="location.hash='#/edit/${esc(code)}'">Edit details</button>
+    <div class="grid2" style="margin-top:10px"><button class="ghost" onclick="location.hash='#/edit/${esc(code)}'">Edit details</button>${(inCellar || incoming) && !b.reserved_for ? `<button class="ghost" onclick="holdBottle('${esc(code)}')">Hold for someone</button>` : '<span></span>'}</div>
     <h2>Details</h2>
     <div class="card"><dl class="kv">
       <dt>Window</dt><dd>${esc(win)}</dd>
@@ -385,14 +389,42 @@ async function bottle(code){
     ${b.journal.length ? `<h2>Journal</h2>${b.journal.map(j => `<div class="card"><div class="row"><div class="col"><div class="title">${j.score != null ? esc(j.band) : esc(j.verdict || 'tasted')}</div><div class="sub">${esc(j.taster)}${j.where ? ' · ' + esc(j.where) : ''}</div></div>${scoreTag(j.score, j.verdict)}</div>${j.notes ? `<div style="margin-top:6px">${esc(j.notes)}</div>` : ''}${j.history ? `<div class="sub">${esc(j.history)}</div>` : ''}</div>`).join('')}` : ''}
     ${inCellar || incoming ? `<button class="big ghost" onclick="location.hash='#/journal/new/${esc(code)}'">Rate this wine</button>` : ''}
     ${inCellar ? `<h2>Fix a mistake</h2><div class="grid2"><button class="danger" onclick="deleteBottle('${esc(code)}')">Delete this bottle</button>${b.siblings_in_cellar > 1 ? `<button class="danger" onclick="deleteAll(${b.wine_id}, ${b.siblings_in_cellar})">Delete all ${b.siblings_in_cellar}</button>` : '<span></span>'}</div><p class="sub">Delete is for mistakes. Use Drink for bottles you opened.</p>` : ''}
-    ${b.history.length ? '<h2>Opened</h2>' + b.history.map(h => `<div class="card"><div class="sub">${new Date(h.when).toLocaleDateString()}${h.rating ? ' · ' + '★'.repeat(h.rating) : ''}</div>${esc(h.note)}</div>`).join('') : ''}`;
+    ${b.history.length ? '<h2>History</h2>' + b.history.map(h => `<div class="card"><div class="title">${h.reason === 'gift' ? 'Given to ' + esc(h.recipient) : 'Opened'}</div><div class="sub">${new Date(h.when).toLocaleDateString()}${h.occasion ? ' · ' + esc(h.occasion) : ''}${h.rating ? ' · ' + '★'.repeat(h.rating) : ''}</div>${h.note ? `<div>${esc(h.note)}</div>` : ''}</div>`).join('') : ''}`;
 }
-async function drink(code){
+async function pickPerson(title, people, preset){
+  const opts = [...(preset ? [{label: preset, sub:'held for', value: preset}] : []), ...people.filter(p => p !== preset).map(p => ({label: p, value: p})), {label:'Someone else…', value:'__new'}];
+  let who = await choose(title, opts); if (!who) return null;
+  if (who === '__new') who = await askText(title, 'Name');
+  return who;
+}
+async function drink(code, heldFor){
+  if (heldFor) { const ok = await choose(`This bottle is held for ${heldFor}. Open it anyway?`, [{label:'Open it anyway', value:true}]); if (!ok) return; }
   await busy(document.getElementById('drinkBtn'), async () => {
     const r = await api(`bottle/${code}/drink`, {method:'POST', body:'{}'});
     toast(`Enjoy! Opened ${r.label}.`, 'Undo', async () => { await api(`bottle/${code}/undo`, {method:'POST'}); bottle(code); });
   });
   bottle(code);
+}
+async function giftBottle(code, heldFor){
+  const b = await api('bottle/' + code);
+  const who = await pickPerson('Who is this bottle for?', b.people, heldFor); if (!who) return;
+  const occasion = await askText(`Occasion for ${who} (optional)`, 'Birthday, thank you, dinner…');
+  await busy(document.getElementById('giftBtn'), async () => {
+    const r = await api(`bottle/${code}/gift`, {method:'POST', body: JSON.stringify({to: who, occasion: occasion || ''})});
+    toast(`Given to ${r.to}: ${r.label}.`, 'Undo', async () => { await api(`bottle/${code}/undo`, {method:'POST'}); bottle(code); });
+  });
+  bottle(code);
+}
+async function holdBottle(code){
+  const b = await api('bottle/' + code);
+  const who = await pickPerson('Hold this bottle for…', b.people, null); if (!who) return;
+  const note = await askText(`Why or when? (optional)`, "Mom's birthday, pay back for Napa…");
+  await api(`bottle/${code}/reserve`, {method:'POST', body: JSON.stringify({reserved_for: who, note: note || ''})});
+  toast(`Held for ${who}. It will stay out of Tonight and suggestions.`); bottle(code);
+}
+async function releaseHold(code){
+  await api(`bottle/${code}/reserve`, {method:'POST', body: JSON.stringify({reserved_for: ''})});
+  toast('Hold released.'); bottle(code);
 }
 async function arrived(code){
   await busy(document.getElementById('arrBtn'), async () => { await api(`bottle/${code}/arrived`, {method:'POST'}); });
@@ -412,6 +444,20 @@ async function moveBottle(code){
   const l = ls.find(x => x.code === pick);
   await api(`bottle/${code}/move`, {method:'POST', body: JSON.stringify({location_code: l.code})});
   toast(`Moved to ${l.name}.`); bottle(code);
+}
+
+// ---------- Held for others / Gifts ----------
+async function heldPage(){
+  const groups = await api('held');
+  topbar('Held for others', {back:'#/cellar', noGear:true});
+  view.innerHTML = groups.length ? groups.map(g => `<h2>${esc(g.person)} <span class="sub">${g.bottles.length} · ${money(g.value, CUR)}</span></h2>${g.bottles.map(bottleRow).join('')}`).join('')
+    : '<div class="card empty">Nothing is held for anyone. Open a bottle and tap "Hold for someone" to keep it out of Tonight.</div>';
+}
+async function giftsPage(){
+  const rows = await api('gifts');
+  topbar('Gifts given', {back:'#/cellar', noGear:true});
+  view.innerHTML = rows.length ? rows.map(g => `<div class="card tap" onclick="${g.code ? `location.hash='#/bottle/${g.code}'` : ''}"><div class="row"><div class="col"><div class="title">${esc(g.label)}</div><div class="meta"><span>to <b>${esc(g.to)}</b></span><span>${new Date(g.when).toLocaleDateString()}</span>${g.occasion ? `<span>${esc(g.occasion)}</span>` : ''}${g.value != null ? `<span>${money(g.value, CUR)}</span>` : ''}</div>${g.note ? `<div class="sub">${esc(g.note)}</div>` : ''}</div></div></div>`).join('')
+    : '<div class="card empty">No gifts recorded yet. Open a bottle and tap "Gift this".</div>';
 }
 
 // ---------- Edit bottle ----------
@@ -602,7 +648,7 @@ async function saveSettings(){
 }
 
 // ---------- Router ----------
-const TAB_FOR = {list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
+const TAB_FOR = {list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
 window.__navDepth = 0;
 window.addEventListener('hashchange', () => { window.__navDepth++; });
 async function route(){
@@ -620,6 +666,8 @@ async function route(){
     else if (page === 'location' && arg) await locationPage(arg.toUpperCase());
     else if (page === 'settings') await settings();
     else if (page === 'edit' && arg) await editForm(arg.toUpperCase());
+    else if (page === 'held') await heldPage();
+    else if (page === 'gifts') await giftsPage();
     else if (page === 'list') await statusList(arg || 'all');
     else if (page === 'journal' && arg === 'new') await journalNew(location.hash.split('/')[3] ? location.hash.split('/')[3].toUpperCase() : null);
     else if (page === 'journal') await journal();

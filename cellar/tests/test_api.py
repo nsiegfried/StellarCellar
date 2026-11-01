@@ -157,3 +157,36 @@ def test_edit_bottle():
         assert e2["window_to"] is None and e2["est_value"] is None
         assert client.patch(f"/api/bottle/{a}", json={"producer": "  "}).status_code == 400
         assert client.patch(f"/api/bottle/{a}", json={"color": "purple"}).status_code == 400
+
+
+def test_gift_hold_and_split():
+    with TestClient(app) as client:
+        r = client.post("/api/bottles", json={"producer": "GiftWine", "quantity": 2, "purchase_price": 100,
+                                              "drink_from": 2020, "drink_to": 2040}).json()
+        a, b2 = r["codes"]
+        before = client.get("/api/summary").json()
+        # hold one
+        h = client.post(f"/api/bottle/{a}/reserve", json={"reserved_for": "Colin", "note": "Napa payback"}).json()
+        assert h["reserved_for"] == "Colin"
+        s = client.get("/api/summary").json()
+        assert s["held"] >= 1 and s["held_value"] >= 100 and abs(s["own_value"] + s["held_value"] - s["value"]) < 0.01
+        held = client.get("/api/held").json()
+        assert any(g["person"] == "Colin" and any(x["code"] == a for x in g["bottles"]) for g in held)
+        # held bottle stays out of picks and recommendations
+        picks = client.get("/api/picks").json()
+        codes = [x["code"] for tier in ("under_low", "under_high", "special") for x in picks[tier]]
+        assert a not in codes
+        rec = client.post("/api/recommend", json={"food": "steak"}).json()
+        assert all(p["code"] != a for p in rec["picks"])
+        # gift it, undo, gift again
+        g = client.post(f"/api/bottle/{a}/gift", json={"to": "Colin", "occasion": "Birthday"}).json()
+        assert g["ok"] and g["to"] == "Colin"
+        assert client.get(f"/api/bottle/{a}").json()["bottle_status"] == "gifted"
+        assert client.post(f"/api/bottle/{a}/undo").json()["ok"]
+        assert client.get(f"/api/bottle/{a}").json()["bottle_status"] == "in_cellar"
+        client.post(f"/api/bottle/{a}/gift", json={"to": "Colin"})
+        gifts = client.get("/api/gifts").json()
+        assert gifts[0]["to"] == "Colin" and gifts[0]["code"] == a
+        assert "Colin" in client.get(f"/api/bottle/{b2}").json()["people"]
+        assert client.post(f"/api/bottle/{a}/gift", json={"to": "X"}).status_code == 409
+        assert client.post(f"/api/bottle/{b2}/gift", json={"to": " "}).status_code == 400

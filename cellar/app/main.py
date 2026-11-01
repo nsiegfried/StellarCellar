@@ -112,6 +112,8 @@ def candidate(session: Session, b: Bottle) -> dict:
         "window_from": win.drink_from if win else None,
         "window_to": win.drink_to if win else None,
         "location": loc.name if loc else "Unplaced",
+        "reserved_for": b.reserved_for or "",
+        "reserved_note": b.reserved_note or "",
     }
 
 
@@ -149,6 +151,16 @@ def tasting_out(t: Tasting) -> dict:
     return {"id": t.id, "wine_id": t.wine_id, "wine": t.wine_text, "vintage": t.vintage, "taster": t.taster,
             "score": t.score, "band": t.band, "verdict": t.verdict, "notes": t.notes, "where": t.where,
             "tasted_on": t.tasted_on.isoformat() if t.tasted_on else None, "history": t.history}
+
+
+def known_people(session: Session) -> list:
+    """Names used before as gift recipients or holds, for the picklist."""
+    names = set()
+    for h in session.exec(select(Consumption).where(Consumption.recipient != "")).all():
+        names.add(h.recipient)
+    for b in session.exec(select(Bottle).where(Bottle.reserved_for != "")).all():
+        names.add(b.reserved_for)
+    return sorted(names)
 
 
 def in_cellar(session: Session):
@@ -238,12 +250,18 @@ def health():
 def summary(session: Session = Depends(get_session)):
     bottles = in_cellar(session)
     counts = {"too_young": 0, "ready": 0, "drink_soon": 0, "past_peak": 0, "unknown": 0}
-    value = 0.0
+    value = held_value = 0.0
+    held = 0
     for b in bottles:
         c = candidate(session, b)
         counts[c["status"]] = counts.get(c["status"], 0) + 1
         value += c["price"] or 0
-    return {"total": len(bottles), **counts, "value": round(value, 2), "currency": CURRENCY}
+        if c["reserved_for"]:
+            held += 1
+            held_value += c["price"] or 0
+    return {"total": len(bottles), **counts, "value": round(value, 2), "held": held,
+            "held_value": round(held_value, 2), "own_value": round(value - held_value, 2),
+            "currency": CURRENCY}
 
 
 @app.get("/api/search")
@@ -279,7 +297,7 @@ def list_bottles(status: str = "all", session: Session = Depends(get_session)):
 
 @app.get("/api/picks")
 def picks(session: Session = Depends(get_session)):
-    cands = [candidate(session, b) for b in in_cellar(session)]
+    cands = [c for c in (candidate(session, b) for b in in_cellar(session)) if not c["reserved_for"]]
     return {**build_picks(cands, LOW, HIGH), "thresholds": {"low": LOW, "high": HIGH},
             "currency": CURRENCY}
 
@@ -287,7 +305,7 @@ def picks(session: Session = Depends(get_session)):
 @app.post("/api/recommend")
 def recommend(body: RecommendBody, session: Session = Depends(get_session)):
     cands = [c for c in (candidate(session, b) for b in in_cellar(session))
-             if c["status"] in ("ready", "drink_soon")]
+             if c["status"] in ("ready", "drink_soon") and not c["reserved_for"]]
     if body.budget_max is not None:
         cands = [c for c in cands if c["price"] is None or c["price"] <= body.budget_max]
     return ai.recommend(body.food, body.occasion, cands, get_setting(session, "taste_profile"))
@@ -371,8 +389,9 @@ def bottle_detail(code: str, session: Session = Depends(get_session)):
         "window_source": win.source if win else None,
         "purchase_price": b.purchase_price, "est_value": b.est_value, "currency": b.currency,
         "added_at": b.added_at.isoformat(),
-        "history": [{"when": h.occurred_at.isoformat(), "rating": h.rating, "note": h.note}
-                    for h in history],
+        "history": [{"when": h.occurred_at.isoformat(), "reason": h.reason, "recipient": h.recipient,
+                     "occasion": h.occasion, "rating": h.rating, "note": h.note} for h in history],
+        "people": known_people(session),
     }
 
 
@@ -461,11 +480,84 @@ def drink(code: str, body: DrinkBody = DrinkBody(), session: Session = Depends(g
     now = utcnow()
     b.status = "consumed"
     b.consumed_at = now
+    b.reserved_for = ""
+    b.reserved_note = ""
     session.add(b)
-    session.add(Consumption(bottle_id=b.id, occurred_at=now, rating=body.rating, note=body.note))
+    session.add(Consumption(bottle_id=b.id, occurred_at=now, reason="drank", rating=body.rating, note=body.note))
     session.commit()
     wine = session.get(Wine, b.wine_id)
     return {"ok": True, "label": wine_label(wine), "undo_seconds": UNDO_SECONDS}
+
+
+class GiftBody(BaseModel):
+    to: str
+    occasion: str = ""
+    note: str = ""
+
+
+@app.post("/api/bottle/{code}/gift")
+def gift(code: str, body: GiftBody, session: Session = Depends(get_session)):
+    b = get_bottle_or_404(session, code)
+    if b.status != "in_cellar":
+        raise HTTPException(409, "This bottle is not in the cellar")
+    if not body.to.strip():
+        raise HTTPException(400, "Who is it for?")
+    now = utcnow()
+    b.status = "gifted"
+    b.consumed_at = now
+    b.reserved_for = ""
+    b.reserved_note = ""
+    session.add(b)
+    session.add(Consumption(bottle_id=b.id, occurred_at=now, reason="gift", recipient=body.to.strip()[:80],
+                            occasion=body.occasion.strip()[:120], note=body.note.strip()[:500]))
+    session.commit()
+    wine = session.get(Wine, b.wine_id)
+    return {"ok": True, "label": wine_label(wine), "to": body.to.strip(), "undo_seconds": UNDO_SECONDS}
+
+
+class ReserveBody(BaseModel):
+    reserved_for: str = ""
+    note: str = ""
+
+
+@app.post("/api/bottle/{code}/reserve")
+def reserve(code: str, body: ReserveBody, session: Session = Depends(get_session)):
+    """Hold a bottle for someone (or clear the hold with an empty name)."""
+    b = get_bottle_or_404(session, code)
+    if b.status not in ("in_cellar", "incoming"):
+        raise HTTPException(409, "This bottle is not in the cellar")
+    b.reserved_for = body.reserved_for.strip()[:80]
+    b.reserved_note = body.note.strip()[:120] if b.reserved_for else ""
+    session.add(b)
+    session.commit()
+    return {"ok": True, "reserved_for": b.reserved_for, "note": b.reserved_note}
+
+
+@app.get("/api/held")
+def held(session: Session = Depends(get_session)):
+    rows = session.exec(select(Bottle).where(Bottle.reserved_for != "",
+                                             Bottle.status.in_(["in_cellar", "incoming"]))).all()
+    groups = {}
+    for b in rows:
+        c = candidate(session, b)
+        g = groups.setdefault(b.reserved_for, {"person": b.reserved_for, "bottles": [], "value": 0.0})
+        g["bottles"].append(c)
+        g["value"] += c["price"] or 0
+    return sorted(groups.values(), key=lambda g: g["person"].lower())
+
+
+@app.get("/api/gifts")
+def gifts(session: Session = Depends(get_session)):
+    rows = session.exec(select(Consumption).where(Consumption.reason == "gift", Consumption.undone == False)  # noqa: E712
+                        .order_by(Consumption.occurred_at.desc())).all()
+    out = []
+    for h in rows:
+        b = session.get(Bottle, h.bottle_id)
+        wine = session.get(Wine, b.wine_id) if b else None
+        out.append({"code": b.code if b else None, "label": wine_label(wine) if wine else "(deleted)",
+                    "to": h.recipient, "occasion": h.occasion, "note": h.note, "when": h.occurred_at.isoformat(),
+                    "value": effective_price(b.est_value, b.purchase_price) if b else None})
+    return out
 
 
 @app.post("/api/bottle/{code}/undo")
@@ -475,7 +567,7 @@ def undo_drink(code: str, session: Session = Depends(get_session)):
         select(Consumption).where(Consumption.bottle_id == b.id, Consumption.undone == False)  # noqa: E712
         .order_by(Consumption.id.desc())
     ).first()
-    if (not last or b.status != "consumed"
+    if (not last or b.status not in ("consumed", "gifted")
             or utcnow() - last.occurred_at > timedelta(seconds=UNDO_SECONDS)):
         raise HTTPException(409, "Nothing to undo")
     last.undone = True
