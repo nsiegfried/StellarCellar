@@ -32,7 +32,8 @@ class Bottle(SQLModel, table=True):
     code: str = Field(index=True, unique=True)
     wine_id: int = Field(foreign_key="wine.id", index=True)
     location_id: Optional[int] = Field(default=None, foreign_key="location.id")
-    status: str = "in_cellar"  # in_cellar | consumed
+    status: str = "in_cellar"  # in_cellar | incoming | consumed
+    tags: str = ""             # comma-separated, e.g. "collector,A+"
     purchase_price: Optional[float] = None
     est_value: Optional[float] = None
     currency: str = "USD"
@@ -61,3 +62,31 @@ class Consumption(SQLModel, table=True):
 class Setting(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str = ""
+
+
+class Tasting(SQLModel, table=True):
+    """Journal entry: a wine someone in the household tasted, anywhere, owned or not."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    wine_id: Optional[int] = Field(default=None, foreign_key="wine.id", index=True)
+    wine_text: str                     # name as recorded, kept even when linked to a Wine
+    vintage: Optional[int] = None
+    taster: str = ""
+    score: Optional[float] = None      # 100-point scale
+    band: str = ""                     # Exceptional | Strong | Good | Drinkable | No, or verdict text
+    verdict: str = ""                  # favorite | dislike | ok, for unscored entries
+    notes: str = ""
+    where: str = ""
+    tasted_on: Optional[datetime] = None
+    source: str = "manual"             # manual | import
+    history: str = ""                  # e.g. "92 -> 90: earlier enthusiasm value-driven"
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class WishItem(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    wine_text: str
+    vintage: Optional[int] = None
+    status: str = "wishlist"           # wishlist | buy_again | purchased
+    notes: str = ""
+    reference_price: Optional[float] = None
+    created_at: datetime = Field(default_factory=utcnow)

@@ -47,7 +47,8 @@ video{width:100%;border-radius:14px;background:#000;max-height:60vh}
   <a href="#/tonight" data-tab="tonight">Tonight</a>
   <a href="#/scan" class="scan"><span>Scan</span></a>
   <a href="#/cellar" data-tab="cellar">Cellar</a>
-  <a href="#/settings" data-tab="settings" style="flex:0 0 56px">⚙︎</a>
+  <a href="#/journal" data-tab="journal">Journal</a>
+  <a href="#/settings" data-tab="settings" style="flex:0 0 48px">⚙︎</a>
 </nav>
 <div id="toast"><span id="toastText"></span><button id="toastBtn"></button></div>
 
@@ -76,8 +77,8 @@ function hideToast(){ document.getElementById('toast').style.display = 'none'; }
 
 const bottleRow = (c, cur) => `
   <div class="card tap" onclick="location.hash='#/bottle/${esc(c.code)}'">
-    <div class="row"><div><div class="title">${esc(c.label)}</div>
-      <div class="sub">${esc(c.location)}${c.price != null ? ' · ' + money(c.price, cur) : ''}${c.reason ? '<br>' + esc(c.reason) : ''}</div></div>
+    <div class="row"><div><div class="title">${esc(c.label)}${c.count > 1 ? ` <span class="sub">×${c.count}</span>` : ''}</div>
+      <div class="sub">${esc(c.location)}${c.price != null ? ' · ' + money(c.price, cur) : ''}${c.score != null ? ` · <b>${c.score}</b>${c.taster ? ' ' + esc(c.taster) : ''}` : ''}${c.reason ? '<br>' + esc(c.reason) : ''}</div></div>
       ${badge(c.status)}</div>
   </div>`;
 
@@ -119,11 +120,12 @@ async function recommend(){
 
 // ---------- Cellar ----------
 async function cellar(){
-  const locs = await api('locations');
+  const [locs, inc] = await Promise.all([api('locations'), api('incoming')]);
   view.innerHTML = `<h1>Cellar</h1>
     <input id="q" placeholder="Search producer or wine" oninput="searchDebounced()"><div id="results"></div>
     <h2>Places</h2>${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">(holding place)</span>' : ''}</div><div class="sub">${l.count} bottles</div></div></div>`).join('') || '<div class="card empty">No places yet.</div>'}
     <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
+    ${inc.length ? `<h2>On order (${inc.length})</h2>${inc.map(c => bottleRow(c)).join('')}` : ''}
     ${locs.length ? `<p class="sub">Print place labels: <a href="api/labels?codes=${locs.map(l=>l.code).join(',')}" target="_blank">open sheet</a></p>` : ''}`;
 }
 let st; function searchDebounced(){ clearTimeout(st); st = setTimeout(search, 250); }
@@ -211,11 +213,16 @@ async function saveBottles(){
 async function bottle(code){
   let b; try { b = await api('bottle/' + code); } catch (e) { view.innerHTML = `<h1>Not found</h1><p>${esc(e.message)}</p>`; return; }
   const win = b.window_from || b.window_to ? `${b.window_from || '…'} to ${b.window_to || '…'}` : 'No drinking window on record';
-  const inCellar = b.status !== 'consumed';
+  const inCellar = b.bottle_status === 'in_cellar';
+  const incoming = b.bottle_status === 'incoming';
+  const scored = b.journal.filter(j => j.score != null);
   view.innerHTML = `<h1>${esc(b.label)}</h1>
     <div class="card"><div class="row"><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div>${inCellar ? badge(b.status) : '<span class="badge unknown">Opened</span>'}</div>
       <p><b>Where:</b> ${esc(b.location)}<br><b>Window:</b> ${win}${b.window_source === 'ai' ? ' (AI draft)' : ''}<br>
-      <b>Paid:</b> ${money(b.purchase_price, b.currency) || '—'} · <b>Value:</b> ${money(b.est_value, b.currency) || '—'}<br><span class="sub">${esc(code)}</span></p></div>
+      <b>Paid:</b> ${money(b.purchase_price, b.currency) || '—'} · <b>Value:</b> ${money(b.est_value, b.currency) || '—'}<br>${b.tags ? `<span class="sub">${esc(b.tags.replace(/,/g,' · '))}</span><br>` : ''}${b.wine_notes ? `<span class="sub">${esc(b.wine_notes)}</span><br>` : ''}<span class="sub">${esc(code)}</span></p></div>
+    ${incoming ? `<div class="card"><b>On order.</b> Not counted in the cellar yet.<br><br><button class="big" onclick="arrived('${esc(code)}')">It arrived</button></div>` : ''}
+    ${b.journal.length ? `<h2>Journal</h2>${b.journal.map(j => `<div class="card"><div class="row"><div class="title">${j.score != null ? j.score + ' · ' + esc(j.band) : esc(j.verdict || 'tasted')}</div><div class="sub">${esc(j.taster)}</div></div>${j.notes ? `<div>${esc(j.notes)}</div>` : ''}${j.history ? `<div class="sub">${esc(j.history)}</div>` : ''}</div>`).join('')}` : ''}
+    ${inCellar || incoming ? `<button class="big ghost" onclick="location.hash='#/journal/new/${esc(code)}'">Rate this wine</button><br><br>` : ''}
     ${inCellar ? `<button class="big" onclick="drink('${esc(code)}')">Drink this</button><br><br>
     <div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><a href="api/labels?codes=${esc(code)}" target="_blank"><button class="ghost" style="width:100%">Print label</button></a></div>
     <p class="sub" style="margin-top:18px">${b.siblings_in_cellar > 1 ? `${b.siblings_in_cellar} bottles of this wine in the cellar. ` : ''}
@@ -227,6 +234,9 @@ async function drink(code){
   const r = await api(`bottle/${code}/drink`, {method:'POST', body:'{}'});
   toast(`Enjoy! Opened ${r.label}.`, 'Undo', async () => { await api(`bottle/${code}/undo`, {method:'POST'}); bottle(code); });
   bottle(code);
+}
+async function arrived(code){
+  await api(`bottle/${code}/arrived`, {method:'POST'}); toast('Welcome home. Scan it into a place.'); bottle(code);
 }
 async function deleteBottle(code, wineId, siblings){
   if (!confirm('Delete this bottle? This is for mistakes; use Drink for bottles you opened.')) return;
@@ -292,18 +302,72 @@ async function handleCode(raw){
   location.hash = code.startsWith('L') ? '#/location/' + code : '#/bottle/' + code;
 }
 
+// ---------- Journal ----------
+const bandClass = s => s == null ? 'unknown' : s >= 90 ? 'ready' : s >= 80 ? 'drink_soon' : s >= 70 ? 'unknown' : 'past_peak';
+function tastingRow(t){
+  const head = t.score != null ? `<span class="badge ${bandClass(t.score)}">${t.score}</span>` : `<span class="badge unknown">${esc(t.verdict || 'tasted')}</span>`;
+  return `<div class="card"><div class="row"><div><div class="title">${esc(t.wine)}${t.vintage ? ' ' + t.vintage : ''}</div>
+    <div class="sub">${[t.taster, t.band, t.where].filter(Boolean).map(esc).join(' · ')}</div>${t.notes ? `<div style="margin-top:4px">${esc(t.notes)}</div>` : ''}${t.history ? `<div class="sub">${esc(t.history)}</div>` : ''}</div>${head}</div>
+    <div class="sub" style="margin-top:6px;text-align:right"><a href="#" onclick="deleteTasting(${t.id});return false">delete</a></div></div>`;
+}
+let jt;
+async function journal(){
+  const [rows, wish] = await Promise.all([api('journal'), api('wishlist')]);
+  const loved = rows.filter(t => t.score >= 90 || t.verdict === 'favorite');
+  const avoid = rows.filter(t => (t.score != null && t.score < 70) || t.verdict === 'dislike');
+  view.innerHTML = `<h1>Journal</h1>
+    <button class="big" onclick="location.hash='#/journal/new'">Add a tasting</button>
+    <input id="jq" placeholder="Search tastings" style="margin-top:12px" oninput="clearTimeout(jt); jt=setTimeout(journalSearch,250)"><div id="jres"></div>
+    <h2>Loved (${loved.length})</h2>${loved.map(tastingRow).join('') || '<div class="card empty">Nothing yet.</div>'}
+    <h2>Wish list</h2>${wish.map(w => `<div class="card"><div class="row"><div><div class="title">${esc(w.wine)}${w.vintage ? ' ' + w.vintage : ''}</div><div class="sub">${esc(w.status.replace('_',' '))}${w.reference_price ? ' · ' + money(w.reference_price) : ''}${w.notes ? ' · ' + esc(w.notes) : ''}</div></div><a href="#" class="sub" onclick="deleteWish(${w.id});return false">remove</a></div></div>`).join('') || '<div class="card empty">Empty.</div>'}
+    <button class="ghost" onclick="addWish()">Add to wish list</button>
+    <h2>All tastings (${rows.length})</h2>${rows.map(tastingRow).join('')}
+    <h2>Avoid (${avoid.length})</h2>${avoid.map(tastingRow).join('') || '<div class="card empty">Nothing here.</div>'}`;
+}
+async function journalSearch(){
+  const q = document.getElementById('jq').value.trim(); const box = document.getElementById('jres');
+  if (!q) { box.innerHTML = ''; return; }
+  const r = await api('journal?q=' + encodeURIComponent(q)); box.innerHTML = r.map(tastingRow).join('') || '<div class="card empty">No match.</div>';
+}
+async function journalNew(code){
+  let pre = {};
+  if (code) { const b = await api('bottle/' + code); pre = {wine: b.producer + (b.name ? ' ' + b.name : ''), vintage: b.vintage}; }
+  const st = await api('settings');
+  view.innerHTML = `<h1>Add a tasting</h1><div class="card">
+    <label>Wine *</label><input id="tw" value="${esc(pre.wine || '')}" placeholder="Producer and wine">
+    <div class="grid2"><div><label>Vintage</label><input id="tv" type="number" value="${pre.vintage || ''}"></div><div><label>Who tasted</label><input id="tt" value="${esc(st.default_taster || '')}"></div></div>
+    <label>Score (100-point, leave blank if unsure)</label><input id="ts" type="number" min="0" max="100">
+    <label>Verdict if unscored</label><select id="tvd"><option value="">—</option><option value="favorite">Favorite</option><option value="ok">OK</option><option value="dislike">Dislike</option></select>
+    <label>Notes</label><textarea id="tn" rows="3" placeholder="Smoke, cedar, long finish…"></textarea>
+    <label>Where</label><input id="twh" placeholder="Home, restaurant, tasting room…">
+    <button class="big" id="tsave" onclick="saveTasting(${code ? `'${esc(code)}'` : 'null'})">Save</button><div id="tmsg" class="sub"></div></div>`;
+}
+async function saveTasting(code){
+  const btn = document.getElementById('tsave'); if (btn.disabled) return; btn.disabled = true;
+  try {
+    const body = {wine: tw.value, vintage: num('tv'), taster: tt.value, score: num('ts'), verdict: tvd.value, notes: tn.value, where: twh.value, bottle_code: code};
+    await api('journal', {method:'POST', body: JSON.stringify(body)});
+    toast('Tasting saved.'); location.hash = code ? '#/bottle/' + code : '#/journal';
+  } catch (e) { document.getElementById('tmsg').textContent = e.message; btn.disabled = false; }
+}
+async function deleteTasting(id){ if (!confirm('Delete this tasting?')) return; await api('journal/' + id, {method:'DELETE'}); journal(); }
+async function deleteWish(id){ await api('wishlist/' + id, {method:'DELETE'}); journal(); }
+async function addWish(){ const w = prompt('Wine to add to the wish list'); if (!w) return; await api('wishlist', {method:'POST', body: JSON.stringify({wine: w})}); journal(); }
+
 // ---------- Settings ----------
 async function settings(){
   const [st, ls] = await Promise.all([api('settings'), api('locations')]);
   view.innerHTML = `<h1>Settings</h1>
     <div class="card"><label>Default place for new bottles</label>
       <select id="defLoc">${ls.map(l => `<option value="${l.code}" ${l.code === st.default_location_code ? 'selected' : ''}>${esc(l.name)}${l.holding ? ' (holding place)' : ''}</option>`).join('')}</select>
+      <label>Default taster for journal entries</label><input id="defTaster" value="${esc(st.default_taster || '')}" placeholder="Jen">
+      <label>Household taste profile (Claude reads this when recommending)</label><textarea id="tasteProfile" rows="8">${esc(st.taste_profile || '')}</textarea>
       <button class="big" onclick="saveSettings()">Save</button><div id="setMsg" class="sub"></div></div>
     <h2>From the add-on configuration</h2>
     <div class="card sub">Currency ${esc(st.currency)} · Drink soon within ${st.drink_soon_months} months · Price tiers ${money(st.price_tier_low, st.currency)} and ${money(st.price_tier_high, st.currency)}<br>Change these in Home Assistant: Settings → Add-ons → Stellar Cellar → Configuration.</div>`;
 }
 async function saveSettings(){
-  await api('settings', {method:'POST', body: JSON.stringify({default_location_code: document.getElementById('defLoc').value})});
+  await api('settings', {method:'POST', body: JSON.stringify({default_location_code: document.getElementById('defLoc').value, default_taster: document.getElementById('defTaster').value, taste_profile: document.getElementById('tasteProfile').value})});
   toast('Settings saved.');
 }
 
@@ -317,6 +381,8 @@ async function route(){
     else if (page === 'cellar') await cellar();
     else if (page === 'add') addForm();
     else if (page === 'settings') await settings();
+    else if (page === 'journal' && arg === 'new') await journalNew(location.hash.split('/')[3] ? location.hash.split('/')[3].toUpperCase() : null);
+    else if (page === 'journal') await journal();
     else if (page === 'bottle' && arg) await bottle(arg.toUpperCase());
     else if (page === 'location' && arg) await locationPage(arg.toUpperCase());
     else await tonight();

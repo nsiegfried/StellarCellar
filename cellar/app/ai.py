@@ -28,7 +28,7 @@ def _fallback(cands):
     return {"summary": "Quick picks from your cellar.", "picks": picks, "source": "rules"}
 
 
-def recommend(food, occasion, cands):
+def recommend(food, occasion, cands, taste_profile: str = ""):
     if not cands:
         return {"summary": "Nothing ready in your cellar fits that. Check Use soon or change the budget.",
                 "picks": [], "source": "none"}
@@ -39,16 +39,21 @@ def recommend(food, occasion, cands):
     by_code = {c["code"]: c for c in cands}
     listing = [
         {"code": c["code"], "label": c["label"], "status": c["status"],
-         "price": c["price"], "color": c["color"], "location": c["location"]}
+         "price": c["price"], "color": c["color"], "location": c["location"],
+         "household_score": c.get("score")}
         for c in cands[:60]
     ]
     user = json.dumps({"food": food, "occasion": occasion, "candidates": listing})
+    system = SYSTEM
+    if taste_profile:
+        system += (" The household's taste profile follows; weigh it heavily and prefer candidates with a high "
+                   "household_score (100-point, their own past rating). Profile: " + taste_profile[:4000])
     try:
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"),
             max_tokens=700,
-            system=SYSTEM,
+            system=system,
             messages=[{"role": "user", "content": user}],
         )
         text = "".join(getattr(block, "text", "") for block in resp.content)

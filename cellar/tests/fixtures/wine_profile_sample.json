@@ -1,0 +1,10 @@
+{"tables": {
+ "master_cellar": [
+  {"Tier": "B+", "Wine": "Jessup Pinot Noir Carneros", "Vintage": "2023", "Est Value": "60.0", "Drink From": "2026.0", "Drink To": "2030.0", "Category": "Personal Favorite", "Notes": "", "Qty": "2"},
+  {"Tier": "TBD", "Wine": "Ridge Lytton Springs", "Vintage": "2024", "Est Value": "50.4", "Drink From": "2028.0", "Drink To": "2042.0", "Category": "Incoming / Collector", "Notes": "ATP order", "Qty": "1"}],
+ "tastings": [
+  {"Wine": "Jessup Pinot Noir, Carneros", "Vintage": "2023.0", "Personal Score": 96.0, "Tasting Notes": "Loved", "Rating Band": "Exceptional", "Inventory / Context": "", "score_type": "user_personal"},
+  {"Wine": "Loveblock Pinot Noir", "Vintage": "2021.0", "Personal Score": 40.0, "Tasting Notes": "Strong dislike", "Rating Band": "No", "Inventory / Context": "", "score_type": "user_personal"}],
+ "rating_history": [], "collector_wishlist": [{"Wine / Goal": "Ridge Monte Bello", "Status": "Wishlist", "Notes": ""}], "buy_list": [],
+ "palate_profile": [{"Dimension": "Cabernet", "Current Calibration": "Usually safest lane: Napa."}], "supplemental_facts": []
+}}

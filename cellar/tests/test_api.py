@@ -26,7 +26,7 @@ def test_full_flow():
         assert s["total"] == 2 and s["ready"] == 2 and s["value"] == 84
 
         picks = client.get("/api/picks").json()
-        assert len(picks["under_low"]) == 2
+        assert len(picks["under_low"]) == 1 and picks["under_low"][0]["count"] == 2  # one card per wine
 
         assert client.get(f"/api/location/{loc['code']}").json()["bottles"][0]["location"] == "Kitchen fridge"
         assert client.get("/api/search?q=estate").json()[0]["code"] in r["codes"]
@@ -97,3 +97,22 @@ def test_holding_place_delete_and_settings():
         s = client.post("/api/settings", json={"default_location_code": rack["code"]}).json()
         assert s["default_location_code"] == rack["code"]
         assert client.post("/api/settings", json={"default_location_code": "LNOPE99"}).status_code == 404
+
+
+def test_journal_and_import(tmp_path):
+    import json, pathlib
+    data = json.load(open(pathlib.Path(__file__).parent / "fixtures" / "wine_profile_sample.json"))
+    with TestClient(app) as client:
+        rep = client.post("/api/import/wine-profile", json={"data": data, "taster": "Jen"}).json()
+        assert rep["wines"] == 2 and rep["bottles"] == 2 and rep["incoming"] == 1 and rep["tastings"] == 2
+        assert rep["linked_tastings"] == 1
+        assert client.post("/api/import/wine-profile", json={"data": data}).status_code == 409
+        j = client.get("/api/journal").json()
+        assert j[0]["score"] == 96 and j[0]["taster"] == "Jen"
+        inc = client.get("/api/incoming").json()
+        assert len(inc) == 1 and client.post(f"/api/bottle/{inc[0]['code']}/arrived").json()["ok"]
+        assert client.get("/api/incoming").json() == []
+        assert "Cabernet" in client.get("/api/settings").json()["taste_profile"]
+        t = client.post("/api/journal", json={"wine": "New Thing", "score": 88, "notes": "good"}).json()
+        assert t["band"] == "Strong" and t["taster"] == "Jen"
+        assert client.delete(f"/api/journal/{t['id']}").json()["ok"]

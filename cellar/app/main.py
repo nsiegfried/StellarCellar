@@ -13,10 +13,10 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, delete as sql_delete, select
 
-from . import ai, qr
+from . import ai, importer, qr
 from .db import get_session, init_db
 from .logic import build_picks, effective_price, window_status
-from .models import Bottle, Consumption, DrinkingWindow, Location, Setting, Wine, utcnow
+from .models import Bottle, Consumption, DrinkingWindow, Location, Setting, Tasting, Wine, WishItem, utcnow
 
 SOON = int(os.environ.get("CELLAR_DRINK_SOON_MONTHS", "6"))
 LOW = float(os.environ.get("CELLAR_PRICE_TIER_LOW", "50"))
@@ -96,10 +96,16 @@ def candidate(session: Session, b: Bottle) -> dict:
         date.today(),
         SOON,
     ) if b.status == "in_cellar" else b.status
+    best = session.exec(
+        select(Tasting).where(Tasting.wine_id == wine.id, Tasting.score != None)  # noqa: E711
+        .order_by(Tasting.id.desc())
+    ).first()
     return {
         "code": b.code,
         "label": wine_label(wine),
         "status": status,
+        "score": best.score if best else None,
+        "taster": best.taster if best else None,
         "price": effective_price(b.est_value, b.purchase_price),
         "special": wine.special_occasion,
         "color": wine.color,
@@ -132,6 +138,17 @@ def set_setting(session: Session, key: str, value: str):
     row = session.get(Setting, key) or Setting(key=key)
     row.value = value
     session.add(row)
+
+
+def journal_for_wine(session: Session, wine_id: int) -> list:
+    rows = session.exec(select(Tasting).where(Tasting.wine_id == wine_id).order_by(Tasting.id.desc())).all()
+    return [tasting_out(t) for t in rows]
+
+
+def tasting_out(t: Tasting) -> dict:
+    return {"id": t.id, "wine_id": t.wine_id, "wine": t.wine_text, "vintage": t.vintage, "taster": t.taster,
+            "score": t.score, "band": t.band, "verdict": t.verdict, "notes": t.notes, "where": t.where,
+            "tasted_on": t.tasted_on.isoformat() if t.tasted_on else None, "history": t.history}
 
 
 def in_cellar(session: Session):
@@ -262,7 +279,7 @@ def recommend(body: RecommendBody, session: Session = Depends(get_session)):
              if c["status"] in ("ready", "drink_soon")]
     if body.budget_max is not None:
         cands = [c for c in cands if c["price"] is None or c["price"] <= body.budget_max]
-    return ai.recommend(body.food, body.occasion, cands)
+    return ai.recommend(body.food, body.occasion, cands, get_setting(session, "taste_profile"))
 
 
 @app.post("/api/scan-label")
@@ -334,7 +351,9 @@ def bottle_detail(code: str, session: Session = Depends(get_session)):
     ).all())
     return {
         **candidate(session, b),
-        "wine_id": wine.id, "siblings_in_cellar": siblings,
+        "wine_id": wine.id, "siblings_in_cellar": siblings, "tags": b.tags,
+        "bottle_status": b.status, "wine_notes": wine.notes,
+        "journal": journal_for_wine(session, wine.id),
         "producer": wine.producer, "name": wine.name, "vintage": wine.vintage,
         "region": wine.region, "country": wine.country, "color": wine.color,
         "special_occasion": wine.special_occasion,
@@ -438,16 +457,149 @@ def _prune_wine(session: Session, wine_id: int):
         session.commit()
 
 
+# ---------- journal and wish list ----------
+
+class TastingBody(BaseModel):
+    wine: str
+    vintage: Optional[int] = None
+    taster: str = ""
+    score: Optional[float] = None
+    notes: str = ""
+    where: str = ""
+    verdict: str = ""
+    bottle_code: Optional[str] = None   # link to a cellar wine via one of its bottles
+
+
+def band_for(score: Optional[float]) -> str:
+    if score is None:
+        return ""
+    return "Exceptional" if score >= 90 else "Strong" if score >= 86 else "Good" if score >= 80 else "Drinkable" if score >= 70 else "No"
+
+
+@app.get("/api/journal")
+def journal(q: str = "", session: Session = Depends(get_session)):
+    rows = session.exec(select(Tasting).order_by(Tasting.score.desc().nullslast(), Tasting.id.desc())).all()
+    term = q.strip().lower()
+    out = [tasting_out(t) for t in rows if not term or term in (t.wine_text + " " + t.notes).lower()]
+    return out
+
+
+@app.post("/api/journal")
+def add_tasting(body: TastingBody, session: Session = Depends(get_session)):
+    if not body.wine.strip():
+        raise HTTPException(400, "Wine is required")
+    if body.score is not None and not 0 <= body.score <= 100:
+        raise HTTPException(400, "Score is on a 100-point scale")
+    wine = None
+    if body.bottle_code:
+        wine = session.get(Wine, get_bottle_or_404(session, body.bottle_code).wine_id)
+    else:
+        wine = importer.match_wine(session, body.wine, body.vintage)
+    t = Tasting(wine_id=wine.id if wine else None, wine_text=body.wine.strip(), vintage=body.vintage,
+                taster=body.taster.strip() or get_setting(session, "default_taster", ""),
+                score=body.score, band=band_for(body.score), verdict=body.verdict, notes=body.notes.strip(),
+                where=body.where.strip(), tasted_on=utcnow())
+    session.add(t)
+    session.commit()
+    session.refresh(t)
+    return tasting_out(t)
+
+
+@app.delete("/api/journal/{tasting_id}")
+def delete_tasting(tasting_id: int, session: Session = Depends(get_session)):
+    t = session.get(Tasting, tasting_id)
+    if not t:
+        raise HTTPException(404, "Not found")
+    session.delete(t)
+    session.commit()
+    return {"ok": True}
+
+
+@app.get("/api/wishlist")
+def wishlist(session: Session = Depends(get_session)):
+    rows = session.exec(select(WishItem).order_by(WishItem.status, WishItem.id)).all()
+    return [{"id": w.id, "wine": w.wine_text, "vintage": w.vintage, "status": w.status, "notes": w.notes,
+             "reference_price": w.reference_price} for w in rows]
+
+
+class WishBody(BaseModel):
+    wine: str
+    vintage: Optional[int] = None
+    status: str = "wishlist"
+    notes: str = ""
+
+
+@app.post("/api/wishlist")
+def add_wish(body: WishBody, session: Session = Depends(get_session)):
+    w = WishItem(wine_text=body.wine.strip(), vintage=body.vintage, status=body.status, notes=body.notes)
+    session.add(w)
+    session.commit()
+    return {"ok": True, "id": w.id}
+
+
+@app.delete("/api/wishlist/{item_id}")
+def delete_wish(item_id: int, session: Session = Depends(get_session)):
+    w = session.get(WishItem, item_id)
+    if not w:
+        raise HTTPException(404, "Not found")
+    session.delete(w)
+    session.commit()
+    return {"ok": True}
+
+
+@app.get("/api/incoming")
+def incoming(session: Session = Depends(get_session)):
+    rows = session.exec(select(Bottle).where(Bottle.status == "incoming")).all()
+    return [candidate(session, b) for b in rows]
+
+
+@app.post("/api/bottle/{code}/arrived")
+def arrived(code: str, session: Session = Depends(get_session)):
+    b = get_bottle_or_404(session, code)
+    if b.status != "incoming":
+        raise HTTPException(409, "This bottle is not marked incoming")
+    b.status = "in_cellar"
+    session.add(b)
+    session.commit()
+    return {"ok": True}
+
+
+# ---------- import ----------
+
+class ImportBody(BaseModel):
+    data: dict
+    taster: str = "Jen"
+
+
+@app.post("/api/import/wine-profile")
+def import_wine_profile(body: ImportBody, session: Session = Depends(get_session)):
+    """One-shot import of the ChatGPT wine_profile.json export."""
+    if session.exec(select(Tasting).where(Tasting.source == "import")).first():
+        raise HTTPException(409, "This export has already been imported")
+    holding = session.exec(select(Location).where(Location.code == HOLDING_CODE)).first()
+    report = importer.import_profile(session, body.data, holding.id, new_code, taster=body.taster,
+                                     currency=CURRENCY)
+    if report.get("taste_profile"):
+        set_setting(session, "taste_profile", report["taste_profile"])
+    set_setting(session, "default_taster", body.taster)
+    session.commit()
+    return report
+
+
 # ---------- settings ----------
 
 class SettingsBody(BaseModel):
     default_location_code: Optional[str] = None
+    taste_profile: Optional[str] = None
+    default_taster: Optional[str] = None
 
 
 @app.get("/api/settings")
 def read_settings(session: Session = Depends(get_session)):
     return {
         "default_location_code": get_setting(session, "default_location_code", HOLDING_CODE),
+        "taste_profile": get_setting(session, "taste_profile", ""),
+        "default_taster": get_setting(session, "default_taster", ""),
         "holding_code": HOLDING_CODE,
         "currency": CURRENCY, "drink_soon_months": SOON,
         "price_tier_low": LOW, "price_tier_high": HIGH,
@@ -459,6 +611,10 @@ def write_settings(body: SettingsBody, session: Session = Depends(get_session)):
     if body.default_location_code is not None:
         get_location_or_404(session, body.default_location_code)
         set_setting(session, "default_location_code", body.default_location_code.upper())
+    if body.taste_profile is not None:
+        set_setting(session, "taste_profile", body.taste_profile.strip()[:6000])
+    if body.default_taster is not None:
+        set_setting(session, "default_taster", body.default_taster.strip()[:40])
     session.commit()
     return read_settings(session)
 

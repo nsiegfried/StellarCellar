@@ -25,6 +25,17 @@ label**. The phone downsizes the picture, Claude reads producer, name, vintage,
 region and grapes, and estimates a drinking window. Fields are pre-filled for
 you to check before saving. Photos are not stored. Requires the API key.
 
+## Journal, wish list and taste profile
+The Journal tab records wines anyone in the house has tasted, owned or not, on a
+100-point scale with notes. Scores feed the Tonight ranking and Claude's
+recommendations, and show on bottle cards when a cellar wine matches. Settings holds
+a household taste profile that Claude reads on every recommendation.
+
+`POST /api/import/wine-profile` imports a ChatGPT wine-profile export
+(`wine_profile.json`) once: cellar, drinking windows, tastings, wish list, taste profile.
+Bottles whose category says "Incoming" are marked on order and appear under Cellar →
+On order until you tap "It arrived".
+
 ## Labels
 Three formats, switchable at the top of the label sheet:
 - **compact** (default): 20 x 14 mm, 12 mm QR holding just the bottle code. Smallest
