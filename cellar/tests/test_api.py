@@ -55,3 +55,17 @@ def test_full_flow():
 
         assert client.get("/api/bottle/BNOPE123").status_code == 404
         assert client.get("/").status_code == 200
+
+
+def test_label_formats():
+    with TestClient(app) as client:
+        loc = client.post("/api/locations", json={"name": "Shelf"}).json()
+        r = client.post("/api/bottles", json={"producer": "Fmt", "quantity": 1}).json()
+        code = r["codes"][0]
+        compact = client.get(f"/api/labels?codes={code}").text          # default
+        assert "width:20mm" in compact and f'data-payload="{code}"' in compact   # bare code in QR
+        neck = client.get(f"/api/labels?codes={code},{loc['code']}&fmt=neck").text
+        assert "width:54mm" in neck and loc["code"] in neck
+        full = client.get(f"/api/labels?codes={code}&fmt=full").text
+        assert f'data-payload="http://testserver/q/{code}"' in full
+        assert client.get(f"/api/labels?codes={code}&fmt=huge").status_code == 400

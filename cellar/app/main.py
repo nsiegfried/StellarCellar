@@ -397,8 +397,22 @@ def location_detail(code: str, session: Session = Depends(get_session)):
 
 # ---------- printable labels ----------
 
+LABEL_FORMATS = {
+    # full: URL in the QR, scannable by the phone's own camera once the public route exists
+    "full": {"qr_mm": 22, "w_mm": 40, "h_mm": 30, "font_pt": 8, "border": 4, "payload": "url"},
+    # compact: bare code in the QR, in-app scanner only, smallest reliable size
+    "compact": {"qr_mm": 12, "w_mm": 20, "h_mm": 14, "font_pt": 5, "border": 2, "payload": "code"},
+    # neck: fits Brother DK-11204 17 x 54 mm die-cut strips, wraps the bottle neck
+    "neck": {"qr_mm": 13, "w_mm": 54, "h_mm": 17, "font_pt": 7, "border": 2, "payload": "code"},
+}
+
+
 @app.get("/api/labels", response_class=HTMLResponse)
-def labels(codes: str, request: Request, session: Session = Depends(get_session)):
+def labels(codes: str, request: Request, fmt: str = "compact",
+           session: Session = Depends(get_session)):
+    if fmt not in LABEL_FORMATS:
+        raise HTTPException(400, f"fmt must be one of {', '.join(LABEL_FORMATS)}")
+    f = LABEL_FORMATS[fmt]
     base = PUBLIC_BASE or str(request.base_url).rstrip("/")
     cards = []
     for raw in codes.split(","):
@@ -415,29 +429,36 @@ def labels(codes: str, request: Request, session: Session = Depends(get_session)
             raise HTTPException(400, f"Unknown code {code}")
         if not obj:
             raise HTTPException(404, f"Code {code} not found")
-        link = f"{base}/q/{code}"
+        payload = f"{base}/q/{code}" if f["payload"] == "url" else code
         cards.append(
-            '<div class="label">'
-            f'<div class="qr">{qr.svg(link)}</div>'
-            f'<div class="code">{code}</div>'
-            f'<div class="title">{html.escape(title or "")}</div>'
+            f'<div class="label" data-payload="{html.escape(payload)}">'
+            f'<div class="qr">{qr.svg(payload, border=f["border"])}</div>'
+            f'<div class="text"><div class="code">{code}</div>'
+            f'<div class="title">{html.escape(title or "")}</div></div>'
             "</div>"
         )
     warning = ""
-    if not PUBLIC_BASE:
+    if fmt == "full" and not PUBLIC_BASE:
         warning = ('<p class="warn">Set "Public base URL" in the add-on options so these codes '
                    "work when scanned from outside your home.</p>")
+    horizontal = f["w_mm"] > f["h_mm"] * 1.6
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
-<title>Cellar labels</title>
+<title>Stellar Cellar labels ({fmt})</title>
 <style>
 body{{font-family:system-ui,sans-serif;margin:12px}}
-.sheet{{display:flex;flex-wrap:wrap;gap:6px}}
-.label{{width:44mm;border:1px dashed #bbb;padding:3mm;text-align:center;page-break-inside:avoid}}
-.qr svg{{width:30mm;height:30mm;display:block;margin:0 auto}}
-.code{{font-family:monospace;font-size:11pt;letter-spacing:1px;margin-top:1mm}}
-.title{{font-size:8pt;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}}
+.sheet{{display:flex;flex-wrap:wrap;gap:4px}}
+.label{{width:{f["w_mm"]}mm;height:{f["h_mm"]}mm;border:1px dashed #bbb;box-sizing:border-box;
+  display:flex;flex-direction:{"row" if horizontal else "column"};align-items:center;justify-content:center;
+  gap:1.5mm;padding:1mm;overflow:hidden;page-break-inside:avoid}}
+.qr svg{{width:{f["qr_mm"]}mm;height:{f["qr_mm"]}mm;display:block}}
+.text{{text-align:{"left" if horizontal else "center"};min-width:0}}
+.code{{font-family:monospace;font-size:{f["font_pt"]}pt;letter-spacing:.5px}}
+.title{{font-size:{f["font_pt"]}pt;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:{f["w_mm"] - (f["qr_mm"] + 5 if horizontal else 2)}mm}}
 .warn{{color:#b00}}
-@media print{{body{{margin:0}} .warn,button{{display:none}}}}
+@media print{{body{{margin:0}} .warn,.bar{{display:none}} .label{{border:0}}}}
 </style></head><body>
-<button onclick="window.print()">Print</button>{warning}
+<div class="bar"><button onclick="window.print()">Print</button>
+&nbsp; Format: <a href="?codes={html.escape(codes)}&fmt=compact">compact</a> ·
+<a href="?codes={html.escape(codes)}&fmt=neck">neck strip</a> ·
+<a href="?codes={html.escape(codes)}&fmt=full">full (camera link)</a></div>{warning}
 <div class="sheet">{''.join(cards)}</div></body></html>""")

@@ -26,6 +26,12 @@ region and grapes, and estimates a drinking window. Fields are pre-filled for
 you to check before saving. Photos are not stored. Requires the API key.
 
 ## Labels
+Three formats, switchable at the top of the label sheet:
+- **compact** (default): 20 x 14 mm, 12 mm QR holding just the bottle code. Smallest
+  that scans reliably; in-app scanner only.
+- **neck**: 54 x 17 mm strip for Brother DK-11204 die-cut labels, wraps the bottle neck.
+- **full**: 40 x 30 mm with the URL in the QR, for the phone's own camera.
+
 Labels encode `<public_base_url>/q/<CODE>`. Scanning inside the app works
 today. For the phone's native camera to open a label from outside the house,
 Home Assistant needs a route from that URL to the add-on panel; that is the
