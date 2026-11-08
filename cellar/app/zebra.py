@@ -72,11 +72,10 @@ def right_half_zpl(code: str, title: str, payload: str, *, width_mm: float, heig
     x0 = w // 2 + dots(2.0, dpi)          # left edge of the right half
     col_w = w - x0 - dots(2.0, dpi)
     top = dots(2.5, dpi)
-    code_h = dots(5.0, dpi)
-    title_h = dots(4.0, dpi)
-    sub_h = dots(3.2, dpi)
+    title_h = dots(5.0, dpi)
+    sub_h = dots(3.6, dpi)
     gap = dots(1.5, dpi)
-    text_block = code_h + gap + title_h * 2 + gap + sub_h + gap
+    text_block = title_h * 3 + gap + sub_h + gap
     qr_target = int(min(col_w, h - top * 2 - text_block) * max(0.3, min(1.0, qr_scale)))
     graphic, qr_px = qr_graphic(payload, qr_target)
     qr_x = x0 + (col_w - qr_px) // 2
@@ -87,9 +86,8 @@ def right_half_zpl(code: str, title: str, payload: str, *, width_mm: float, heig
         "^XA"
         f"^PW{w}^LL{h}^LH0,0^MD{max(-30, min(30, darkness - 20))}"
         f"^FO{qr_x},{top}{graphic}^FS"
-        f"^FO{x0},{y}^A0N,{code_h},{code_h}^FB{col_w},1,0,C^FD{code}^FS"
-        f"^FO{x0},{y + code_h + gap}^A0N,{title_h},{title_h}^FB{col_w},2,0,C^FD{title}^FS"
-        f"^FO{x0},{y + code_h + gap + title_h * 2 + gap}^A0N,{sub_h},{sub_h}^FB{col_w},1,0,C^FD{subtitle}^FS"
+        f"^FO{x0},{y}^A0N,{title_h},{title_h}^FB{col_w},3,0,C^FD{title}^FS"
+        f"^FO{x0},{y + title_h * 3 + gap}^A0N,{sub_h},{sub_h}^FB{col_w},1,0,C^FD{subtitle}^FS"
         "^XZ"
     )
 
