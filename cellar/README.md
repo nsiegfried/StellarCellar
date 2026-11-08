@@ -18,6 +18,10 @@ drinking windows, price tiers, and Claude recommendations from the bottles you o
 | currency | ISO code used for display |
 | drink_soon_months | Window closing within this many months = "Drink soon" |
 | price_tier_low / high | The two price buckets on the Tonight page (default 50 / 100) |
+| zebra_host | IP of a Zebra label printer (ZPL over port 9100). Blank = print via browser sheet |
+| zebra_dpi | 203 or 300, printed on the printer's label |
+| zebra_label_width_mm / height_mm | Your label stock, default 25.4 x 12.7 (1 x 0.5 inch) |
+| zebra_darkness | 0 to 30, raise if the QR prints faint |
 
 ## Adding bottles by photo
 On the Add page (or the Scan page when a bottle has no QR yet), tap **Photo the

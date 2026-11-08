@@ -173,6 +173,21 @@ function topbar(title, {back, action, noGear} = {}){
   document.getElementById('top').innerHTML = (back ? `<button class="tbtn" onclick="goBack('${back}')">‹ Back</button>` : '<span class="spacer"></span>') + `<div class="ttl">${esc(title)}</div>` + right;
 }
 
+// ---------- printing ----------
+let PRINTER = null;
+async function printerInfo(){ if (PRINTER === null) { try { PRINTER = await api('printer'); } catch (_) { PRINTER = {configured:false}; } } return PRINTER; }
+async function printLabels(codes){
+  const p = await printerInfo();
+  if (!p.configured) { window.open('api/labels?codes=' + codes.join(','), '_blank'); return; }
+  const how = await choose(`Print ${codes.length} label${codes.length>1?'s':''}`, [
+    {label:'Send to the Zebra', sub: p.online ? 'Printer is online' : 'Printer did not answer; it may be asleep', value:'zebra'},
+    {label:'Open a printable sheet', sub:'For any other printer', value:'sheet'}]);
+  if (!how) return;
+  if (how === 'sheet') { window.open('api/labels?codes=' + codes.join(','), '_blank'); return; }
+  try { const r = await api('print', {method:'POST', body: JSON.stringify({codes})}); toast(`Sent ${r.printed} label${r.printed>1?'s':''} to the Zebra.`); }
+  catch (e) { toast(e.message, 'Use sheet', () => window.open('api/labels?codes=' + codes.join(','), '_blank')); }
+}
+
 // ---------- shared rows ----------
 const bottleRow = c => `
   <div class="card tap" onclick="location.hash='#/bottle/${esc(c.code)}'">
@@ -275,7 +290,7 @@ async function cellar(){
     <div class="card tap row" onclick="location.hash='#/held'"><div class="title">Held for others</div><div class="sub">${heldN} bottle${heldN===1?'':'s'} ›</div></div>
     <div class="card tap row" onclick="location.hash='#/gifts'"><div class="title">Gifts given</div><div class="sub">${giftsL.length} ›</div></div>
     <div id="valueBox"></div><button class="ghost" id="valueBtn" style="width:100%" onclick="toggleValue()">Show cellar value</button>
-    ${locs.length ? `<p class="sub" style="text-align:center">Print place labels: <a href="api/labels?codes=${locs.map(l=>l.code).join(',')}&fmt=neck" target="_blank">open sheet</a></p>` : ''}`;
+    ${locs.length ? `<button class="ghost" style="width:100%" onclick="printLabels(${JSON.stringify(locs.map(l=>l.code))})">Print place labels</button>` : ''}`;
 }
 let st; function searchDebounced(){ clearTimeout(st); st = setTimeout(search, 250); }
 async function search(){
@@ -356,7 +371,7 @@ async function saveBottles(){
     const r = await api('bottles', {method:'POST', body: JSON.stringify(body)});
     const n = r.codes.length;
     location.hash = '#/bottle/' + r.codes[0];
-    toast(`Saved ${n} × ${r.wine}.`, `Print ${n} label${n>1?'s':''}`, () => window.open('api/labels?codes=' + r.codes.join(','), '_blank'));
+    toast(`Saved ${n} × ${r.wine}.`, `Print ${n} label${n>1?'s':''}`, () => printLabels(r.codes));
   } catch (e) { document.getElementById('addMsg').innerHTML = `<p class="sub">${esc(e.message)}</p>`; btn.disabled = false; btn.textContent = 'Save'; }
 }
 
@@ -374,7 +389,7 @@ async function bottle(code){
       <div class="meta" style="margin:10px 0 14px"><span>📍 <b>${esc(b.location)}</b></span>${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
       ${inCellar ? `<div class="grid2"><button class="big" id="drinkBtn" onclick="drink('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Drink this</button><button class="big ghost" id="giftBtn" onclick="giftBottle('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Gift this</button></div>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
     </div>
-    ${inCellar ? `<div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><button class="ghost" onclick="window.open('api/labels?codes=${esc(code)}','_blank')">Print label</button></div>` : ''}
+    ${inCellar ? `<div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><button class="ghost" onclick="printLabels(['${esc(code)}'])">Print label</button></div>` : ''}
     <div class="grid2" style="margin-top:10px"><button class="ghost" onclick="location.hash='#/edit/${esc(code)}'">Edit details</button>${(inCellar || incoming) && !b.reserved_for ? `<button class="ghost" onclick="holdBottle('${esc(code)}')">Hold for someone</button>` : '<span></span>'}</div>
     <h2>Details</h2>
     <div class="card"><dl class="kv">
@@ -501,7 +516,7 @@ async function locationPage(code){
   topbar(l.name, {back:'#/cellar', noGear:true});
   const groups = {}; l.bottles.forEach(c => { (groups[c.label] = groups[c.label] || {...c, count:0}).count++; });
   view.innerHTML = `<p class="sub">${l.bottles.length} bottle${l.bottles.length===1?'':'s'} · ${esc(code)}</p>
-    <button class="big ghost" onclick="putHere('${esc(code)}')">Put bottles here (scan)</button>
+    <div class="grid2"><button class="ghost" onclick="putHere('${esc(code)}')">Put bottles here (scan)</button>${l.bottles.length ? `<button class="ghost" onclick="printLabels(${JSON.stringify(l.bottles.map(b=>b.code))})">Print ${l.bottles.length} labels</button>` : '<span></span>'}</div>
     ${Object.values(groups).map(bottleRow).join('') || '<div class="card empty">Empty. Scan bottles into this place or move them here.</div>'}`;
 }
 function putHere(code){ sessionStorage.setItem('moveTo', code); sessionStorage.setItem('moveCount', '0'); location.hash = '#/scan'; }
@@ -638,9 +653,18 @@ async function settings(){
       <label>Default taster for journal entries</label><input id="defTaster" value="${esc(st.default_taster || '')}" placeholder="Jen">
       <label>Household taste profile (Claude reads this when recommending)</label><textarea id="tasteProfile" rows="8">${esc(st.taste_profile || '')}</textarea>
       <button class="big" onclick="saveSettings()">Save</button></div>
+    <h2>Label printer</h2>
+    <div class="card" id="printerCard">Checking…</div>
     <h2>From the add-on configuration</h2>
     <div class="card sub">Currency ${esc(st.currency)} · Drink soon within ${st.drink_soon_months} months · Price tiers ${money(st.price_tier_low, st.currency)} and ${money(st.price_tier_high, st.currency)}<br>Change these in Home Assistant: Settings → Add-ons → Stellar Cellar → Configuration.</div>`;
+  loadPrinterCard();
 }
+async function loadPrinterCard(){
+  const p = await printerInfo(); const el = document.getElementById('printerCard'); if (!el) return;
+  el.innerHTML = p.configured ? `<div class="row"><div><div class="title">Zebra at ${esc(p.host)}</div><div class="sub">${p.online ? 'Online' : 'Not answering'} · ${p.label_mm[0]} × ${p.label_mm[1]} mm · ${p.dpi} dpi</div></div><button class="ghost" onclick="testPrint(this)">Test print</button></div>`
+    : '<div class="sub">No network printer set. Add the Zebra\'s IP as zebra_host in the add-on configuration and labels will print straight from your phone.</div>';
+}
+async function testPrint(btn){ await busy(btn, async () => { try { await api('print/test', {method:'POST'}); toast('Test label sent.'); } catch (e) { toast(e.message); } }); }
 function setSize(s){ if (s === 'large') { document.documentElement.dataset.size = 'large'; localStorage.setItem('sc_size','large'); } else { delete document.documentElement.dataset.size; localStorage.removeItem('sc_size'); } settings(); }
 async function saveSettings(){
   await api('settings', {method:'POST', body: JSON.stringify({default_location_code: document.getElementById('defLoc').value, default_taster: document.getElementById('defTaster').value, taste_profile: document.getElementById('tasteProfile').value})});

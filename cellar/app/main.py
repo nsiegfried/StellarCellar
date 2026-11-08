@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, delete as sql_delete, select
 
-from . import ai, importer, qr
+from . import ai, importer, qr, zebra
 from .db import get_session, init_db
 from .logic import build_picks, effective_price, window_status
 from .models import Bottle, Consumption, DrinkingWindow, Location, Setting, Tasting, Wine, WishItem, utcnow
@@ -24,6 +24,12 @@ HIGH = float(os.environ.get("CELLAR_PRICE_TIER_HIGH", "100"))
 CURRENCY = os.environ.get("CELLAR_CURRENCY", "USD")
 PUBLIC_BASE = os.environ.get("CELLAR_PUBLIC_BASE", "").strip().rstrip("/")
 UNDO_SECONDS = 10
+ZEBRA_HOST = os.environ.get("CELLAR_ZEBRA_HOST", "").strip()
+ZEBRA_PORT = int(os.environ.get("CELLAR_ZEBRA_PORT", "9100") or 9100)
+ZEBRA_DPI = int(os.environ.get("CELLAR_ZEBRA_DPI", "203") or 203)
+ZEBRA_W = float(os.environ.get("CELLAR_ZEBRA_LABEL_W_MM", "25.4") or 25.4)
+ZEBRA_H = float(os.environ.get("CELLAR_ZEBRA_LABEL_H_MM", "12.7") or 12.7)
+ZEBRA_DARK = int(os.environ.get("CELLAR_ZEBRA_DARKNESS", "20") or 20)
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"  # no I, L, O, U
 
@@ -866,6 +872,65 @@ LABEL_FORMATS = {
     # neck: fits Brother DK-11204 17 x 54 mm die-cut strips, wraps the bottle neck
     "neck": {"qr_mm": 13, "w_mm": 54, "h_mm": 17, "font_pt": 7, "border": 2, "payload": "code"},
 }
+
+
+class PrintBody(BaseModel):
+    codes: List[str]
+    copies: int = 1
+
+
+def _label_target(session: Session, code: str):
+    if code.startswith("B"):
+        b = session.exec(select(Bottle).where(Bottle.code == code)).first()
+        return (wine_label(session.get(Wine, b.wine_id)) if b else None), b
+    if code.startswith("L"):
+        loc = session.exec(select(Location).where(Location.code == code)).first()
+        return (loc.name if loc else None), loc
+    return None, None
+
+
+@app.get("/api/printer")
+def printer_info():
+    """Tells the app whether a network label printer is configured and reachable."""
+    if not ZEBRA_HOST:
+        return {"configured": False}
+    return {"configured": True, "host": ZEBRA_HOST, "online": zebra.status(ZEBRA_HOST, ZEBRA_PORT),
+            "label_mm": [ZEBRA_W, ZEBRA_H], "dpi": ZEBRA_DPI}
+
+
+@app.post("/api/print")
+def print_labels(body: PrintBody, session: Session = Depends(get_session)):
+    """Send labels straight to the Zebra. Bare code in the QR, same as the compact sheet."""
+    if not ZEBRA_HOST:
+        raise HTTPException(409, "No label printer configured. Set zebra_host in the add-on options.")
+    if not 1 <= body.copies <= 10:
+        raise HTTPException(400, "Copies must be 1 to 10")
+    zpl = []
+    for raw in body.codes[:100]:
+        code = raw.strip().upper()
+        title, obj = _label_target(session, code)
+        if not obj:
+            raise HTTPException(404, f"Code {code} not found")
+        zpl.append(zebra.label_zpl(code, title, code, width_mm=ZEBRA_W, height_mm=ZEBRA_H,
+                                   dpi=ZEBRA_DPI, darkness=ZEBRA_DARK) * body.copies)
+    try:
+        zebra.send(ZEBRA_HOST, "".join(zpl), ZEBRA_PORT)
+    except OSError as exc:
+        raise HTTPException(503, f"Printer at {ZEBRA_HOST} did not answer ({exc.__class__.__name__}).")
+    return {"ok": True, "printed": len(zpl) * body.copies}
+
+
+@app.post("/api/print/test")
+def print_test():
+    if not ZEBRA_HOST:
+        raise HTTPException(409, "No label printer configured.")
+    zpl = zebra.label_zpl("BTEST01", "Stellar Cellar test", "BTEST01", width_mm=ZEBRA_W, height_mm=ZEBRA_H,
+                          dpi=ZEBRA_DPI, darkness=ZEBRA_DARK)
+    try:
+        zebra.send(ZEBRA_HOST, zpl, ZEBRA_PORT)
+    except OSError as exc:
+        raise HTTPException(503, f"Printer at {ZEBRA_HOST} did not answer ({exc.__class__.__name__}).")
+    return {"ok": True}
 
 
 @app.get("/api/labels", response_class=HTMLResponse)
