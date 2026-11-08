@@ -120,6 +120,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
+const APP_VERSION = '0.10.7';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
@@ -535,14 +536,20 @@ async function scan(){
     ${moveTo ? `<div class="banner"><div>Moving to ${esc(moveName)}<div class="sub" style="color:#fff;opacity:.9" id="moveCount">${sessionStorage.getItem('moveCount')||0} scanned</div></div><button onclick="endMove()">Done</button></div>` : '<p class="sub">Point at a bottle or place label.</p>'}
     <div class="scanwrap"><video id="cam" autoplay playsinline muted></video><div class="guide"><div></div></div></div>
     <div id="camMsg" class="sub" style="margin:8px 0"></div>
+    <div id="camDiag" class="sub" style="font-size:11px;opacity:.7"></div>
     <input type="file" id="qrPhoto" accept="image/*" capture="environment" style="display:none" onchange="decodeQrPhoto(this.files[0])">
     <button class="big" id="qrPhotoBtn" style="margin-top:8px" onclick="qrPhoto.click()">📷 Take a photo of the QR</button>
     <input type="file" id="labelFile" accept="image/*" capture="environment" style="display:none" onchange="pendingLabelFile=this.files[0];location.hash='#/add'">
     <div class="grid2" style="margin-top:8px"><button class="ghost" onclick="labelFile.click()">Read a wine label</button><button class="ghost" onclick="typeCode()">Type a code</button></div>`;
   const msg = document.getElementById('camMsg');
+  const diag = s => { const d = document.getElementById('camDiag'); if (d) d.textContent = `v${APP_VERSION} · ${window.self === window.top ? 'full page' : 'in HA frame'} · ${s}`; };
+  diag(navigator.mediaDevices?.getUserMedia ? 'camera API present, requesting…' : 'no camera API in this view');
   if (!navigator.mediaDevices?.getUserMedia) { document.querySelector('.scanwrap').style.display = 'none'; msg.textContent = 'Live camera not available here. Use "Take a photo of the QR" below; it works the same.'; return; }
   try {
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const req = navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const timer = new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), {name:'NoResponse'})), 8000));
+    stream = await Promise.race([req, timer]);
+    diag('camera granted, live');
     const v = document.getElementById('cam'); v.srcObject = stream;
     scanning = true; let last = '', lastAt = 0;
     const onValue = async raw => {
@@ -574,6 +581,7 @@ async function scan(){
     v.onloadedmetadata = () => { v.play().catch(()=>{}); loop(); };
     msg.textContent = native ? '' : '';
   } catch (e) {
+    diag('camera refused: ' + (e.name || 'error') + (e.message ? ' ' + e.message.slice(0,60) : ''));
     document.querySelector('.scanwrap').style.display = 'none';
     const framed = window.self !== window.top;
     msg.innerHTML = `Live camera not available here (${esc(e.name || 'error')}).`
@@ -704,6 +712,7 @@ async function settings(){
       <button class="big" onclick="saveSettings()">Save</button></div>
     <h2>Label printer</h2>
     <div class="card" id="printerCard">Checking…</div>
+    <p class="sub" style="text-align:center">Stellar Cellar v${APP_VERSION}</p>
     <h2>From the add-on configuration</h2>
     <div class="card sub">Currency ${esc(st.currency)} · Drink soon within ${st.drink_soon_months} months · Price tiers ${money(st.price_tier_low, st.currency)} and ${money(st.price_tier_high, st.currency)}<br>Change these in Home Assistant: Settings → Add-ons → Stellar Cellar → Configuration.</div>`;
   loadPrinterCard();
