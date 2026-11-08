@@ -168,10 +168,11 @@ function askText(title, placeholder){
 // ---------- top bar ----------
 function goBack(parent){ if (window.__navDepth > 0) { window.__navDepth--; history.back(); } else location.hash = parent; }
 function topbar(title, {back, action, noGear} = {}){
+  const unframed = window.self === window.top && /\/api\/hassio_ingress\//.test(location.pathname);
   const right = action ? `<button class="tbtn" onclick="${action.onclick}" aria-label="${esc(action.label)}">${action.icon}</button>`
               : noGear ? '<span class="spacer"></span>'
               : `<button class="tbtn" onclick="location.hash='#/settings'" aria-label="Settings">⚙︎</button>`;
-  document.getElementById('top').innerHTML = (back ? `<button class="tbtn" onclick="goBack('${back}')">‹ Back</button>` : '<span class="spacer"></span>') + `<div class="ttl">${esc(title)}</div>` + right;
+  document.getElementById('top').innerHTML = (back ? `<button class="tbtn" onclick="goBack('${back}')">‹ Back</button>` : unframed ? `<button class="tbtn" onclick="location.href='/'" aria-label="Home Assistant">⌂ HA</button>` : '<span class="spacer"></span>') + `<div class="ttl">${esc(title)}</div>` + right;
 }
 
 // ---------- printing ----------
@@ -572,7 +573,12 @@ async function scan(){
     };
     v.onloadedmetadata = () => { v.play().catch(()=>{}); loop(); };
     msg.textContent = native ? '' : '';
-  } catch (e) { document.querySelector('.scanwrap').style.display = 'none'; msg.textContent = 'Live camera not available here (' + (e.name || 'error') + '). Use "Take a photo of the QR" below; it works the same.'; }
+  } catch (e) {
+    document.querySelector('.scanwrap').style.display = 'none';
+    const framed = window.self !== window.top;
+    msg.innerHTML = `Live camera not available here (${esc(e.name || 'error')}).`
+      + (framed ? ` Home Assistant's frame blocks it. <button class="big" style="margin-top:10px" onclick="window.open(location.href, '_top')">Open full screen for live scanning</button><div class="sub" style="margin-top:6px">Or use "Take a photo of the QR" below.</div>` : ' Allow camera access for this app, or use "Take a photo of the QR" below.');
+  }
 }
 async function decodeQrPhoto(file){
   if (!file) return;
