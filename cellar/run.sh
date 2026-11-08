@@ -16,6 +16,7 @@ export CELLAR_ZEBRA_LABEL_W_MM="$(bashio::config 'zebra_label_width_mm' '25.4')"
 export CELLAR_ZEBRA_LABEL_H_MM="$(bashio::config 'zebra_label_height_mm' '12.7')"
 export CELLAR_ZEBRA_DARKNESS="$(bashio::config 'zebra_darkness' '20')"
 export CELLAR_ZEBRA_LAYOUT="$(bashio::config 'zebra_layout' 'compact')"
+export CELLAR_ZEBRA_QR_SCALE="$(bashio::config 'zebra_qr_scale' '1.0')"
 export CELLAR_DATA_DIR="/data"
 
 cd /app

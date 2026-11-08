@@ -65,7 +65,7 @@ def qr_graphic(payload: str, size_px: int, border: int = 2) -> tuple:
 
 
 def right_half_zpl(code: str, title: str, payload: str, *, width_mm: float, height_mm: float, dpi: int,
-                   darkness: int = 20, subtitle: str = "") -> str:
+                   darkness: int = 20, subtitle: str = "", qr_scale: float = 1.0) -> str:
     """Large-format layout: the right half of the label carries a big QR with the code and wine
     name beneath it; the left half stays blank for notes or a hand-written tag."""
     w, h = dots(width_mm, dpi), dots(height_mm, dpi)
@@ -77,7 +77,7 @@ def right_half_zpl(code: str, title: str, payload: str, *, width_mm: float, heig
     sub_h = dots(3.2, dpi)
     gap = dots(1.5, dpi)
     text_block = code_h + gap + title_h * 2 + gap + sub_h + gap
-    qr_target = min(col_w, h - top * 2 - text_block)
+    qr_target = int(min(col_w, h - top * 2 - text_block) * max(0.3, min(1.0, qr_scale)))
     graphic, qr_px = qr_graphic(payload, qr_target)
     qr_x = x0 + (col_w - qr_px) // 2
     y = top + qr_px + gap
@@ -94,9 +94,10 @@ def right_half_zpl(code: str, title: str, payload: str, *, width_mm: float, heig
     )
 
 
-def render(layout: str, code: str, title: str, payload: str, *, subtitle: str = "", **kw) -> str:
+def render(layout: str, code: str, title: str, payload: str, *, subtitle: str = "", qr_scale: float = 1.0,
+           **kw) -> str:
     if layout == "right_half":
-        return right_half_zpl(code, title, payload, subtitle=subtitle, **kw)
+        return right_half_zpl(code, title, payload, subtitle=subtitle, qr_scale=qr_scale, **kw)
     return label_zpl(code, title, payload, **kw)
 
 

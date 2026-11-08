@@ -31,7 +31,8 @@ ZEBRA_W = float(os.environ.get("CELLAR_ZEBRA_LABEL_W_MM", "25.4") or 25.4)
 ZEBRA_H = float(os.environ.get("CELLAR_ZEBRA_LABEL_H_MM", "12.7") or 12.7)
 ZEBRA_DARK = int(os.environ.get("CELLAR_ZEBRA_DARKNESS", "20") or 20)
 ZEBRA_LAYOUT = os.environ.get("CELLAR_ZEBRA_LAYOUT", "compact").strip() or "compact"
-ZEBRA_KW = dict(width_mm=ZEBRA_W, height_mm=ZEBRA_H, dpi=ZEBRA_DPI, darkness=ZEBRA_DARK)
+ZEBRA_QR_SCALE = float(os.environ.get("CELLAR_ZEBRA_QR_SCALE", "1.0") or 1.0)
+ZEBRA_KW = dict(width_mm=ZEBRA_W, height_mm=ZEBRA_H, dpi=ZEBRA_DPI, darkness=ZEBRA_DARK, qr_scale=ZEBRA_QR_SCALE)
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"  # no I, L, O, U
 

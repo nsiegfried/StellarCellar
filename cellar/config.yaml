@@ -1,5 +1,5 @@
 name: Stellar Cellar
-version: "0.10.1"
+version: "0.10.2"
 slug: stellar_cellar
 description: Wine cellar tracker with QR labels, drinking windows, price tiers, and Claude picks
 arch:
@@ -25,6 +25,7 @@ options:
   zebra_label_height_mm: 12.7
   zebra_darkness: 20
   zebra_layout: "compact"
+  zebra_qr_scale: 1.0
 schema:
   anthropic_api_key: password
   claude_model: str
@@ -40,3 +41,4 @@ schema:
   zebra_label_height_mm: float?
   zebra_darkness: int(0,30)?
   zebra_layout: list(compact|right_half)?
+  zebra_qr_scale: float(0.3,1.0)?
