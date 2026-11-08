@@ -48,3 +48,11 @@ def test_right_half_layout_fits_4x3_at_300dpi():
     px = total // row_bytes
     assert qr_x >= 1227 // 2 and px >= 450          # at least ~38 mm at 300 dpi
     assert "Carneros, 2023" in z and "^FB" in z
+
+
+def test_right_half_fields():
+    z = zebra.right_half_zpl("B7K3QX9", "Jessup Cellars Pinot Noir Carneros", "B7K3QX9", width_mm=103.9, height_mm=76.2,
+                             dpi=203, qr_scale=0.5, fields={"vintage": "2023", "window": "Drink 2026 to 2030",
+                                                            "footer": "Carneros · 96 pts · Held for Colin"})
+    assert z.count("2023") == 2 and z.count("Drink 2026 to 2030") == 2       # right column and left half
+    assert "Held for Colin" in z and "B7K3QX9^FS" in z and "^GB2," in z

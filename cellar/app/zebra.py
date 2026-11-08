@@ -65,37 +65,69 @@ def qr_graphic(payload: str, size_px: int, border: int = 2) -> tuple:
 
 
 def right_half_zpl(code: str, title: str, payload: str, *, width_mm: float, height_mm: float, dpi: int,
-                   darkness: int = 20, subtitle: str = "", qr_scale: float = 1.0) -> str:
-    """Large-format layout: the right half of the label carries a big QR with the code and wine
-    name beneath it; the left half stays blank for notes or a hand-written tag."""
+                   darkness: int = 20, subtitle: str = "", qr_scale: float = 1.0, fields: dict = None) -> str:
+    """Large-format layout.
+    Right half: QR, tiny code, producer and wine name, vintage large, drink window, footer (region, score, held for).
+    Left half: vintage and drink window in big type so the label reads from across the fridge."""
+    f = fields or {}
     w, h = dots(width_mm, dpi), dots(height_mm, dpi)
-    x0 = w // 2 + dots(2.0, dpi)          # left edge of the right half
-    col_w = w - x0 - dots(2.0, dpi)
-    top = dots(2.5, dpi)
-    title_h = dots(5.0, dpi)
-    sub_h = dots(3.6, dpi)
-    gap = dots(1.5, dpi)
-    text_block = title_h * 3 + gap + sub_h + gap
-    qr_target = int(min(col_w, h - top * 2 - text_block) * max(0.3, min(1.0, qr_scale)))
-    graphic, qr_px = qr_graphic(payload, qr_target)
-    qr_x = x0 + (col_w - qr_px) // 2
-    y = top + qr_px + gap
-    title = (title or "")[:60].replace("^", "").replace("~", "")
-    subtitle = (subtitle or "")[:40].replace("^", "").replace("~", "")
-    return (
-        "^XA"
-        f"^PW{w}^LL{h}^LH0,0^MD{max(-30, min(30, darkness - 20))}"
-        f"^FO{qr_x},{top}{graphic}^FS"
-        f"^FO{x0},{y}^A0N,{title_h},{title_h}^FB{col_w},3,0,C^FD{title}^FS"
-        f"^FO{x0},{y + title_h * 3 + gap}^A0N,{sub_h},{sub_h}^FB{col_w},1,0,C^FD{subtitle}^FS"
-        "^XZ"
-    )
+    m = dots(2.0, dpi)
+    half = w // 2
+    col_x, col_w = half + m, w - half - 2 * m
+    # type sizes (mm)
+    code_h = dots(2.0, dpi)
+    name_h = dots(4.2, dpi)
+    vint_h = dots(7.0, dpi)
+    win_h = dots(3.6, dpi)
+    foot_h = dots(3.0, dpi)
+    gap = dots(1.2, dpi)
+    text_block = code_h + gap + name_h * 2 + gap + vint_h + gap + win_h + gap + foot_h + gap
+    qr_target = int(min(col_w, h - 2 * m - text_block) * max(0.3, min(1.0, qr_scale)))
+    graphic, qr_px = qr_graphic(payload, max(qr_target, dots(14, dpi)))
+    qr_x = col_x + (col_w - qr_px) // 2
+
+    def clean(s, n):
+        return (s or "")[:n].replace("^", "").replace("~", "")
+
+    name = clean(title, 70)
+    vintage = clean(f.get("vintage") or "", 8)
+    window = clean(f.get("window") or "", 30)
+    footer = clean(f.get("footer") or subtitle, 50)
+
+    y = m
+    out = ["^XA", f"^PW{w}^LL{h}^LH0,0^MD{max(-30, min(30, darkness - 20))}"]
+    out.append(f"^FO{qr_x},{y}{graphic}^FS"); y += qr_px
+    out.append(f"^FO{col_x},{y}^A0N,{code_h},{code_h}^FB{col_w},1,0,C^FD{code}^FS"); y += code_h + gap
+    out.append(f"^FO{col_x},{y}^A0N,{name_h},{name_h}^FB{col_w},2,0,C^FD{name}^FS"); y += name_h * 2 + gap
+    if vintage:
+        out.append(f"^FO{col_x},{y}^A0N,{vint_h},{vint_h}^FB{col_w},1,0,C^FD{vintage}^FS")
+    y += vint_h + gap
+    if window:
+        out.append(f"^FO{col_x},{y}^A0N,{win_h},{win_h}^FB{col_w},1,0,C^FD{window}^FS")
+    y += win_h + gap
+    if footer:
+        out.append(f"^FO{col_x},{y}^A0N,{foot_h},{foot_h}^FB{col_w},1,0,C^FD{footer}^FS")
+
+    # left half: big vintage and window, vertically centred
+    lx, lw = m, half - 2 * m
+    big_v = dots(16, dpi)
+    big_w = dots(5.0, dpi)
+    block = (big_v if vintage else 0) + (gap * 2 + big_w if window else 0)
+    ly = max(m, (h - block) // 2)
+    if vintage:
+        out.append(f"^FO{lx},{ly}^A0N,{big_v},{big_v}^FB{lw},1,0,C^FD{vintage}^FS"); ly += big_v + gap * 2
+    if window:
+        out.append(f"^FO{lx},{ly}^A0N,{big_w},{big_w}^FB{lw},2,0,C^FD{window}^FS")
+    # faint divider so the two halves read as a pair
+    out.append(f"^FO{half - 1},{m}^GB2,{h - 2 * m},2^FS")
+    out.append("^XZ")
+    return "".join(out)
 
 
 def render(layout: str, code: str, title: str, payload: str, *, subtitle: str = "", qr_scale: float = 1.0,
-           **kw) -> str:
+           fields: dict = None, **kw) -> str:
     if layout == "right_half":
-        return right_half_zpl(code, title, payload, subtitle=subtitle, qr_scale=qr_scale, **kw)
+        return right_half_zpl(code, title, payload, subtitle=subtitle, qr_scale=qr_scale, fields=fields, **kw)
     return label_zpl(code, title, payload, **kw)
 
 

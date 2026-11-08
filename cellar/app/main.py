@@ -883,18 +883,40 @@ class PrintBody(BaseModel):
 
 
 def _label_target(session: Session, code: str):
-    """Returns (title, subtitle, object) for a bottle or place code."""
+    """Returns (title, subtitle, object, fields) for a bottle or place code."""
     if code.startswith("B"):
         b = session.exec(select(Bottle).where(Bottle.code == code)).first()
         if not b:
-            return None, "", None
+            return None, "", None, {}
         wine = session.get(Wine, b.wine_id)
-        sub = ", ".join(x for x in [wine.region, str(wine.vintage) if wine.vintage else ""] if x)
-        return wine_label(wine), sub, b
+        win = best_window(session, wine.id)
+        if win and (win.drink_from or win.drink_to):
+            today_y = date.today().year
+            if win.drink_from and win.drink_from > today_y:
+                window = f"Hold until {win.drink_from}"
+            elif win.drink_from and win.drink_to:
+                window = f"Drink {win.drink_from} to {win.drink_to}"
+            elif win.drink_to:
+                window = f"Drink by {win.drink_to}"
+            else:
+                window = f"Drink from {win.drink_from}"
+        else:
+            window = ""
+        best = session.exec(select(Tasting).where(Tasting.wine_id == wine.id, Tasting.score != None)  # noqa: E711
+                            .order_by(Tasting.id.desc())).first()
+        foot = [wine.region] if wine.region else []
+        if best:
+            foot.append(f"{best.score:g} pts")
+        if b.reserved_for:
+            foot.append(f"Held for {b.reserved_for}")
+        fields = {"vintage": str(wine.vintage) if wine.vintage else "NV", "window": window,
+                  "footer": " · ".join(foot)}
+        name = " ".join(x for x in [wine.producer, wine.name] if x)
+        return name, fields["footer"], b, fields
     if code.startswith("L"):
         loc = session.exec(select(Location).where(Location.code == code)).first()
-        return (loc.name if loc else None), "Place", loc
-    return None, "", None
+        return (loc.name if loc else None), "Place", loc, {"footer": "Place"}
+    return None, "", None, {}
 
 
 @app.get("/api/printer")
@@ -916,10 +938,11 @@ def print_labels(body: PrintBody, session: Session = Depends(get_session)):
     zpl = []
     for raw in body.codes[:100]:
         code = raw.strip().upper()
-        title, sub, obj = _label_target(session, code)
+        title, sub, obj, fields = _label_target(session, code)
         if not obj:
             raise HTTPException(404, f"Code {code} not found")
-        zpl.append(zebra.render(ZEBRA_LAYOUT, code, title, code, subtitle=sub, **ZEBRA_KW) * body.copies)
+        zpl.append(zebra.render(ZEBRA_LAYOUT, code, title, code, subtitle=sub, fields=fields, **ZEBRA_KW)
+                   * body.copies)
     try:
         zebra.send(ZEBRA_HOST, "".join(zpl), ZEBRA_PORT)
     except OSError as exc:
@@ -932,7 +955,9 @@ def print_test():
     if not ZEBRA_HOST:
         raise HTTPException(409, "No label printer configured.")
     zpl = zebra.render(ZEBRA_LAYOUT, "BTEST01", "Stellar Cellar test label", "BTEST01",
-                       subtitle="Scan me with the app", **ZEBRA_KW)
+                       subtitle="Scan me with the app",
+                       fields={"vintage": "2018", "window": "Drink 2026 to 2033", "footer": "Napa Valley · 96 pts"},
+                       **ZEBRA_KW)
     try:
         zebra.send(ZEBRA_HOST, zpl, ZEBRA_PORT)
     except OSError as exc:
