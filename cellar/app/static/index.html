@@ -117,6 +117,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <div id="sheetBg" onclick="closeSheet()"></div><div id="sheet"></div>
 <div id="toast"><div class="trow"><span id="toastText"></span><button id="toastBtn"></button></div><div class="bar" id="toastBar"></div></div>
 
+<script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
 const api = async (path, opts={}) => {
@@ -536,18 +537,40 @@ async function scan(){
     <input type="file" id="labelFile" accept="image/*" capture="environment" style="display:none" onchange="pendingLabelFile=this.files[0];location.hash='#/add'">
     <div class="grid2" style="margin-top:8px"><button class="ghost" onclick="labelFile.click()">Read a label instead</button><button class="ghost" onclick="typeCode()">Type a code</button></div>`;
   const msg = document.getElementById('camMsg');
-  if (!('BarcodeDetector' in window)) { msg.textContent = 'This browser cannot scan in-app. Use the phone camera on the label, or type the code.'; return; }
+  if (!navigator.mediaDevices?.getUserMedia) { msg.textContent = 'This browser has no camera access. Type the code, or open the app in Safari or Chrome.'; return; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
     const v = document.getElementById('cam'); v.srcObject = stream;
-    const det = new BarcodeDetector({formats:['qr_code']}); scanning = true; let last = '', lastAt = 0;
+    scanning = true; let last = '', lastAt = 0;
+    const onValue = async raw => {
+      const m = raw.match(/\/q\/([A-Z0-9]+)/i) || raw.match(/^([BL][A-Z0-9]{6})$/i);
+      if (m && (m[1] !== last || Date.now() - lastAt > 3000)) { last = m[1]; lastAt = Date.now(); if (navigator.vibrate) navigator.vibrate(60); await handleCode(m[1]); }
+    };
+    // Native detector where the browser has one (Chrome on Android); jsQR everywhere else (Safari, the HA app).
+    const native = ('BarcodeDetector' in window) ? new BarcodeDetector({formats:['qr_code']}) : null;
+    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d', {willReadFrequently:true});
+    let busyFrame = false, frame = 0;
     const loop = async () => {
       if (!scanning) return;
-      try { const codes = await det.detect(v); for (const c of codes) { const m = c.rawValue.match(/\/q\/([A-Z0-9]+)/i) || c.rawValue.match(/^([BL][A-Z0-9]{6})$/i); if (m && (m[1] !== last || Date.now() - lastAt > 3000)) { last = m[1]; lastAt = Date.now(); if (navigator.vibrate) navigator.vibrate(60); await handleCode(m[1]); } } } catch (_) {}
+      if (!busyFrame && v.readyState >= 2 && (frame++ % 3 === 0)) {
+        busyFrame = true;
+        try {
+          if (native) { for (const c of await native.detect(v)) await onValue(c.rawValue); }
+          else if (window.jsQR) {
+            const scale = Math.min(1, 640 / v.videoWidth); canvas.width = Math.round(v.videoWidth * scale); canvas.height = Math.round(v.videoHeight * scale);
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const r = jsQR(img.data, img.width, img.height, {inversionAttempts:'dontInvert'});
+            if (r && r.data) await onValue(r.data);
+          }
+        } catch (_) {}
+        busyFrame = false;
+      }
       requestAnimationFrame(loop);
     };
-    v.onloadedmetadata = loop;
-  } catch (e) { msg.textContent = 'Camera unavailable: ' + e.message + '. Type the code instead.'; }
+    v.onloadedmetadata = () => { v.play().catch(()=>{}); loop(); };
+    msg.textContent = native ? '' : '';
+  } catch (e) { msg.textContent = 'Camera blocked: ' + e.message + '. Allow camera access for this site, or type the code.'; }
 }
 async function typeCode(){ const c = await askText('Type the code on the label', 'B7K3QX9 or L4M9TQ2'); if (c) handleCode(c); }
 function stopScan(){ scanning = false; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }

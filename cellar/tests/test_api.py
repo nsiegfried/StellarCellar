@@ -190,3 +190,9 @@ def test_gift_hold_and_split():
         assert "Colin" in client.get(f"/api/bottle/{b2}").json()["people"]
         assert client.post(f"/api/bottle/{a}/gift", json={"to": "X"}).status_code == 409
         assert client.post(f"/api/bottle/{b2}/gift", json={"to": " "}).status_code == 400
+
+
+def test_static_scanner_library_served():
+    with TestClient(app) as client:
+        r = client.get("/static/jsQR.js")
+        assert r.status_code == 200 and "jsQR" in r.text[:2000]
