@@ -35,3 +35,16 @@ def test_print_endpoints():
             assert client.post("/api/print", json={"codes": ["BNOPE99"]}).status_code == 404
             send.side_effect = OSError("refused")
             assert client.post("/api/print/test").status_code == 503
+
+
+def test_right_half_layout_fits_4x3_at_300dpi():
+    z = zebra.right_half_zpl("B7K3QX9", "Jessup Pinot Noir Carneros 2023", "B7K3QX9", subtitle="Carneros, 2023",
+                             width_mm=103.9, height_mm=76.2, dpi=300)
+    assert "^PW1227^LL900" in z
+    # the QR starts in the right half and its magnification is as large as the column allows
+    import re
+    m = re.search(r"\^FO(\d+),\d+\^GFA,(\d+),\d+,(\d+),", z)
+    qr_x, total, row_bytes = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    px = total // row_bytes
+    assert qr_x >= 1227 // 2 and px >= 450          # at least ~38 mm at 300 dpi
+    assert "Carneros, 2023" in z and "^FB" in z

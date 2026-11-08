@@ -30,6 +30,8 @@ ZEBRA_DPI = int(os.environ.get("CELLAR_ZEBRA_DPI", "203") or 203)
 ZEBRA_W = float(os.environ.get("CELLAR_ZEBRA_LABEL_W_MM", "25.4") or 25.4)
 ZEBRA_H = float(os.environ.get("CELLAR_ZEBRA_LABEL_H_MM", "12.7") or 12.7)
 ZEBRA_DARK = int(os.environ.get("CELLAR_ZEBRA_DARKNESS", "20") or 20)
+ZEBRA_LAYOUT = os.environ.get("CELLAR_ZEBRA_LAYOUT", "compact").strip() or "compact"
+ZEBRA_KW = dict(width_mm=ZEBRA_W, height_mm=ZEBRA_H, dpi=ZEBRA_DPI, darkness=ZEBRA_DARK)
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"  # no I, L, O, U
 
@@ -880,13 +882,18 @@ class PrintBody(BaseModel):
 
 
 def _label_target(session: Session, code: str):
+    """Returns (title, subtitle, object) for a bottle or place code."""
     if code.startswith("B"):
         b = session.exec(select(Bottle).where(Bottle.code == code)).first()
-        return (wine_label(session.get(Wine, b.wine_id)) if b else None), b
+        if not b:
+            return None, "", None
+        wine = session.get(Wine, b.wine_id)
+        sub = ", ".join(x for x in [wine.region, str(wine.vintage) if wine.vintage else ""] if x)
+        return wine_label(wine), sub, b
     if code.startswith("L"):
         loc = session.exec(select(Location).where(Location.code == code)).first()
-        return (loc.name if loc else None), loc
-    return None, None
+        return (loc.name if loc else None), "Place", loc
+    return None, "", None
 
 
 @app.get("/api/printer")
@@ -895,7 +902,7 @@ def printer_info():
     if not ZEBRA_HOST:
         return {"configured": False}
     return {"configured": True, "host": ZEBRA_HOST, "online": zebra.status(ZEBRA_HOST, ZEBRA_PORT),
-            "label_mm": [ZEBRA_W, ZEBRA_H], "dpi": ZEBRA_DPI}
+            "label_mm": [ZEBRA_W, ZEBRA_H], "dpi": ZEBRA_DPI, "layout": ZEBRA_LAYOUT}
 
 
 @app.post("/api/print")
@@ -908,11 +915,10 @@ def print_labels(body: PrintBody, session: Session = Depends(get_session)):
     zpl = []
     for raw in body.codes[:100]:
         code = raw.strip().upper()
-        title, obj = _label_target(session, code)
+        title, sub, obj = _label_target(session, code)
         if not obj:
             raise HTTPException(404, f"Code {code} not found")
-        zpl.append(zebra.label_zpl(code, title, code, width_mm=ZEBRA_W, height_mm=ZEBRA_H,
-                                   dpi=ZEBRA_DPI, darkness=ZEBRA_DARK) * body.copies)
+        zpl.append(zebra.render(ZEBRA_LAYOUT, code, title, code, subtitle=sub, **ZEBRA_KW) * body.copies)
     try:
         zebra.send(ZEBRA_HOST, "".join(zpl), ZEBRA_PORT)
     except OSError as exc:
@@ -924,8 +930,8 @@ def print_labels(body: PrintBody, session: Session = Depends(get_session)):
 def print_test():
     if not ZEBRA_HOST:
         raise HTTPException(409, "No label printer configured.")
-    zpl = zebra.label_zpl("BTEST01", "Stellar Cellar test", "BTEST01", width_mm=ZEBRA_W, height_mm=ZEBRA_H,
-                          dpi=ZEBRA_DPI, darkness=ZEBRA_DARK)
+    zpl = zebra.render(ZEBRA_LAYOUT, "BTEST01", "Stellar Cellar test label", "BTEST01",
+                       subtitle="Scan me with the app", **ZEBRA_KW)
     try:
         zebra.send(ZEBRA_HOST, zpl, ZEBRA_PORT)
     except OSError as exc:
