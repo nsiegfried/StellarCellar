@@ -105,7 +105,15 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .slot.back{opacity:.72;transform:scale(.82)}
 .fridge .slot.hit{outline:3px solid var(--gold);outline-offset:3px;animation:glow 1.2s ease-in-out infinite;opacity:1;transform:none;z-index:2}
 .fridge .slot .star{position:absolute;top:-4px;right:-4px;font-size:10px;color:var(--gold)}
-.fridge .slot .n{font-size:9px;color:rgba(255,255,255,.45)}
+.fridge .rack.cols{display:flex;justify-content:space-evenly;gap:0;padding:6px 4px 12px}
+.fridge .cell{position:relative;width:var(--s);height:calc(var(--s) + var(--peek) * (var(--deep) - 1));cursor:pointer;flex:none}
+.fridge .cell .slot{position:absolute;left:0;width:var(--s);height:var(--s)}
+.fridge .cell .slot.d0{bottom:0;z-index:3}
+.fridge .cell .slot.d1{bottom:var(--peek);z-index:2;transform:scale(.86);opacity:.8}
+.fridge .cell .slot.d2{bottom:calc(var(--peek) * 2);z-index:1;transform:scale(.74);opacity:.65}
+.fridge .cell .slot.hit{opacity:1;z-index:5}
+.fridge .cell:active .slot.d0{filter:brightness(1.35)}
+.fridge .rack.cols .lbl{left:2px;top:auto;bottom:1px;background:none;color:#6b5634;font-size:13px;padding:0 4px;z-index:6}
 .fridge .slot.tap:active{filter:brightness(1.4)}
 .fridge .zone{color:#e9d9c3;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.85;margin:10px 2px 2px;display:flex;align-items:center;gap:8px}
 .fridge .zone::after{content:"";flex:1;height:2px;background:linear-gradient(90deg,#c9a46a,transparent)}
@@ -114,9 +122,10 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .rack.bulk .pile .slot{width:22px;height:22px;aspect-ratio:auto}
 .fridge .door{position:absolute;inset:0;border-radius:14px;background:linear-gradient(135deg,#e2e3e6,#b4b6bb 45%,#d2d4d8);transform-origin:left center;transition:transform .9s cubic-bezier(.4,.1,.2,1),opacity .25s ease .85s;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,.4);cursor:pointer}
 .fridge .door .glass{position:absolute;inset:14px;border-radius:8px;background:linear-gradient(165deg,rgba(40,46,58,.9),rgba(12,14,18,.95) 60%),repeating-linear-gradient(180deg,transparent 0 44px,rgba(233,217,186,.28) 44px 48px);box-shadow:inset 0 0 0 2px rgba(255,255,255,.12)}
-.fridge .door .handle{position:absolute;left:-14px;top:28%;bottom:28%;width:10px;border-radius:5px;background:linear-gradient(90deg,#f0f0f0,#8c8e93);box-shadow:2px 0 6px rgba(0,0,0,.35)}
-.fridge .door .name{position:relative;color:#fff;font-weight:700;font-size:var(--fs-title);text-shadow:0 2px 8px rgba(0,0,0,.7)}
-.fridge .door .hint{position:absolute;bottom:22px;left:0;right:0;text-align:center;color:#fff;opacity:.75;font-size:var(--fs-sub)}
+.fridge .door .handle{position:absolute;left:4px;top:min(18%,120px);height:min(40%,260px);width:10px;border-radius:5px;background:linear-gradient(90deg,#f0f0f0,#8c8e93);box-shadow:2px 0 6px rgba(0,0,0,.35)}
+.fridge .door{align-items:flex-start}
+.fridge .door .name{position:absolute;top:min(22%,170px);left:0;right:0;text-align:center;color:#fff;font-weight:700;font-size:var(--fs-title);text-shadow:0 2px 8px rgba(0,0,0,.7);z-index:2}
+.fridge .door .hint{position:absolute;top:calc(min(22%,170px) + 2.2em);left:0;right:0;text-align:center;color:#fff;opacity:.85;font-size:var(--fs-sub);z-index:2}
 .fridge.open .door{transform:rotateY(-112deg);opacity:0;pointer-events:none}
 .fridge.closing .door{transition:opacity .15s ease,transform .9s cubic-bezier(.4,.1,.2,1) .1s;opacity:1;transform:none}
 .fridge .cap{color:#fff;opacity:.8;font-size:var(--fs-sub);text-align:center;margin-top:6px}
@@ -154,7 +163,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.13.2';
+const APP_VERSION = '0.13.3';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
@@ -558,42 +567,69 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
   const unplaced = loc.bottles.filter(b => !b.slot);
   const hitBottle = highlightCode ? loc.bottles.find(b => b.code === highlightCode) : null;
   const hitRack = hitBottle && hitBottle.slot ? hitBottle.slot.split('-')[0] : null;
+  window.__fridgeSlots = byslot;
   let lastZone = -1;
   const racks = lay.racks.map(r => {
     let zoneHdr = '';
-    if (lay.zones && lay.zones.length && r.zone !== lastZone) { zoneHdr = (lastZone >= 0 ? `<div class="ctrl"><span>${lay.zones.length > 1 ? '◦ ◦ ◦' : ''}</span><b>newair</b><span>◦ ◦ ◦</span></div>` : '') + `<div class="zone">${esc(lay.zones[r.zone] || '')}</div>`; lastZone = r.zone; }
+    if (lay.zones && lay.zones.length && r.zone !== lastZone) {
+      zoneHdr = (lastZone >= 0 ? `<div class="ctrl"><span>◦ ◦ ◦</span><b>${esc(loc.name)}</b><span>◦ ◦ ◦</span></div>` : '') + `<div class="zone">${esc(lay.zones[r.zone] || '')}</div>`;
+      lastZone = r.zone;
+    }
+    const isHit = hitRack === r.name;
     if (r.bulk) {
       const here = loc.bottles.filter(b => b.slot === r.name);
-      const hit = hitBottle && hitBottle.slot === r.name;
-      const pile = here.map(b => `<div class="slot filled ${hitBottle && b.code === hitBottle.code ? 'hit' : ''} tap" style="--bc:${COLOR[b.color] || COLOR.red}" title="${esc(b.label)}" onclick="location.hash='#/bottle/${esc(b.code)}'">${b.score >= 90 ? '<span class="star">★</span>' : ''}</div>`).join('');
-      const empties = Math.max(0, r.across - here.length);
-      const empty = Array.from({length: Math.min(empties, 30)}, () => `<div class="slot ${placing ? 'tap' : ''}" ${placing ? `onclick="${onSlot}('${r.name}')"` : ''}></div>`).join('');
-      return zoneHdr + `<div class="rack bulk ${hit ? 'hit' : ''}"><span class="lbl">${esc(r.name)} · bulk</span><div class="pile">${pile}${empty}</div></div>`;
+      const pile = here.map(b => `<div class="slot filled ${hitBottle && b.code === hitBottle.code ? 'hit' : ''} tap" style="--bc:${COLOR[b.color] || COLOR.red}" title="${esc(b.label)}" aria-label="${esc(b.label)}" onclick="location.hash='#/bottle/${esc(b.code)}'">${b.score >= 90 ? '<span class="star">★</span>' : ''}</div>`).join('');
+      const empty = Array.from({length: Math.min(Math.max(0, r.across - here.length), 30)}, () => `<div class="slot ${placing ? 'tap' : ''}" ${placing ? `onclick="${onSlot}('${r.name}')"` : ''} aria-label="Empty spot, rack ${esc(r.name)}"></div>`).join('');
+      return zoneHdr + `<div class="rack bulk ${isHit ? 'hit' : ''}" data-rack="${esc(r.name)}"><span class="lbl">${esc(r.name)} · bulk</span><div class="pile">${pile}${empty}</div></div>`;
     }
-    const rows = [];
-    for (let d = r.deep - 1; d >= 0; d--) {            // back row drawn first (smaller), front row last
-      for (let i = 1; i <= r.across; i++) {
+    const cells = [];
+    for (let i = 1; i <= r.across; i++) {
+      const layers = [];
+      for (let d = r.deep - 1; d >= 0; d--) {
         const id = slotId(r.name, i, d), b = byslot[id];
         const hit = hitBottle && b && b.code === hitBottle.code;
-        const cls = ['slot', b ? 'filled' : '', d > 0 ? 'back' : '', hit ? 'hit' : '', (placing || b) ? 'tap' : ''].join(' ');
-        const style = b ? `--bc:${COLOR[b.color] || COLOR.red}` : '';
-        const title = b ? esc(b.label) : id;
-        const click = placing ? `onclick="${onSlot}('${id}')"` : b ? `onclick="location.hash='#/bottle/${esc(b.code)}'"` : '';
-        rows.push(`<div class="${cls}" style="${style};grid-column:${i}" title="${title}" ${click}>${b ? (b.score >= 90 ? '<span class="star">★</span>' : '') : `<span class="n">${i}</span>`}</div>`);
+        layers.push(`<div class="slot d${d} ${b ? 'filled' : ''} ${hit ? 'hit' : ''}" style="${b ? `--bc:${COLOR[b.color] || COLOR.red}` : ''}">${b && b.score >= 90 && d === 0 ? '<span class="star">★</span>' : ''}</div>`);
       }
+      const names = [];
+      for (let d = 0; d < r.deep; d++) { const b = byslot[slotId(r.name, i, d)]; names.push(b ? b.label : 'empty'); }
+      const aria = `Rack ${r.name}, position ${i}: ` + (r.deep > 1 ? `front ${names[0]}, back ${names.slice(1).join(', ')}` : names[0]);
+      cells.push(`<div class="cell" style="--deep:${r.deep}" role="button" aria-label="${esc(aria)}" onclick="cellTapped('${esc(r.name)}',${i},${r.deep},${placing ? 'true' : 'false'})"><span class="sr" hidden>${esc(aria)}</span>${layers.join('')}</div>`);
     }
-    const rackHit = hitRack === r.name && !(hitBottle && hitBottle.slot.includes('-') && byslot[hitBottle.slot]) ? 'hit' : (hitRack === r.name ? 'hit' : '');
-    return zoneHdr + `<div class="rack ${hitBottle && !hitBottle.slot ? '' : rackHit}" style="grid-template-columns:repeat(${r.across},1fr)"><span class="lbl">${esc(r.name)}</span>${rows.join('')}</div>`;
+    return zoneHdr + `<div class="rack cols ${isHit ? 'hit' : ''}" data-rack="${esc(r.name)}" style="--s:clamp(28px, calc((min(100vw, 420px) - 76px) / ${r.across} - 8px), 46px);--peek:13px"><span class="lbl">${esc(r.name)}</span>${cells.join('')}</div>`;
   });
   const used = loc.bottles.length, cap = loc.capacity || 0;
-  return `<div class="fridge" id="fridge">
+  return `<div class="legend"><span><i style="background:${COLOR.red}"></i>Red</span><span><i style="background:${COLOR.white}"></i>White</span><span><i style="background:${COLOR.rose}"></i>Rosé</span><span><i style="background:${COLOR.sparkling}"></i>Sparkling</span><span>★ 90+</span></div>
+    <div class="fridge" id="fridge">
       <div class="body"><div class="inner">${racks.join('')}</div>
         <div class="cap">${used} of ${cap} bottles${unplaced.length ? ` · ${unplaced.length} on a rack, slot unknown` : ''}${hitBottle && !hitBottle.slot ? ' · this bottle is in here, slot not recorded' : ''}</div></div>
       <div class="door" onclick="document.getElementById('fridge').classList.add('open')"><div class="glass"></div><div class="handle"></div><div class="name">${esc(loc.name)}</div><div class="hint">Tap to open</div></div>
-    </div>
-    <div class="legend"><span><i style="background:${COLOR.red}"></i>Red</span><span><i style="background:${COLOR.white}"></i>White</span><span><i style="background:${COLOR.rose}"></i>Rosé</span><span><i style="background:${COLOR.sparkling}"></i>Sparkling</span><span>★ 90+</span></div>`;
+    </div>`;
 }
-function openDoor(delay = 350){ setTimeout(() => document.getElementById('fridge')?.classList.add('open'), delay); }
+// One tap target per column. Placing: pick front/back when the rack is two deep. Browsing: open the bottle, or choose if two.
+async function cellTapped(rack, pos, deep, placing){
+  const slots = window.__fridgeSlots || {};
+  const layers = Array.from({length: deep}, (_, d) => ({d, id: slotId(rack, pos, d), b: slots[slotId(rack, pos, d)]}));
+  if (placing) {
+    let id = layers[0].id;
+    if (deep > 1) {
+      id = await choose(`Rack ${rack}, position ${pos}`, layers.map(l => ({label: l.d === 0 ? 'Front' : l.d === 1 ? 'Back' : 'Far back', sub: l.b ? `Now: ${l.b.label}` : 'Empty', value: l.id})));
+      if (!id) return;
+    }
+    return slotTapped(id);
+  }
+  const filled = layers.filter(l => l.b);
+  if (!filled.length) return;
+  if (filled.length === 1) { location.hash = '#/bottle/' + filled[0].b.code; return; }
+  const code = await choose(`Rack ${rack}, position ${pos}`, filled.map(l => ({label: l.b.label, sub: l.d === 0 ? 'Front' : 'Back', value: l.b.code})));
+  if (code) location.hash = '#/bottle/' + code;
+}
+function openDoor(delay = 350){
+  setTimeout(() => {
+    document.getElementById('fridge')?.classList.add('open');
+    const hit = document.querySelector('#fridge .rack.hit');
+    if (hit) setTimeout(() => hit.scrollIntoView({behavior:'smooth', block:'center'}), 500);
+  }, delay);
+}
 function closeFridgeThen(parent){
   const f = document.getElementById('fridge');
   if (!f || !f.classList.contains('open')) { goBack(parent); return; }
@@ -608,7 +644,7 @@ async function slotTapped(slot){
   const [, , locCode] = location.hash.split('/');
   try {
     const r = await api(`bottle/${placingCode}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot})});
-    toast(`Placed ${r.slot ? 'at ' + r.slot + ' ' : ''}in ${r.location}.`); const code = placingCode; placingCode = null; location.hash = sessionStorage.getItem('pickReturn') ? '#/location/' + locCode + '/pick' : '#/bottle/' + code; sessionStorage.removeItem('pickReturn');
+    toast(`${window.__placingLabel || 'Bottle'} placed ${r.slot ? 'at ' + r.slot + ' ' : ''}in ${r.location}.`); const code = placingCode; placingCode = null; location.hash = sessionStorage.getItem('pickReturn') ? '#/location/' + locCode + '/pick' : '#/bottle/' + code; sessionStorage.removeItem('pickReturn');
   } catch (e) { toast(e.message); }
 }
 
@@ -663,6 +699,9 @@ async function locationPage(code, mode, arg){
   sessionStorage.removeItem('pickReturn');
   const l = await api('location/' + code);
   const placing = mode === 'place' && arg;
+  let placingLabel = '';
+  if (placing) { try { placingLabel = (await api('bottle/' + arg)).label; } catch (_) {} }
+  window.__placingLabel = placingLabel;
   const highlight = mode === 'find' && arg;
   const parent = placing ? '#/bottle/' + arg : '#/cellar';
   topbar(placing ? 'Tap the slot' : l.name, {back: parent, noGear:true});
@@ -672,7 +711,7 @@ async function locationPage(code, mode, arg){
   if (l.layout) { placingCode = placing || null; fridge = renderFridge(l, {highlightCode: highlight, placing: !!placing, onSlot: 'slotTapped'}); }
   const unplaced = l.layout ? l.bottles.filter(b => !b.slot) : [];
   view.innerHTML = `
-    ${placing ? `<div class="banner" style="background:var(--wine)"><div>Where does it sit?<div class="sub" style="color:#fff;opacity:.9">Tap a slot. Front row is the larger circles.</div></div><button onclick="slotTapped('')">Just this rack area</button></div>` : ''}
+    ${placing ? `<div class="banner" style="background:var(--wine)"><div>Where does the ${esc(placingLabel || 'bottle')} sit?<div class="sub" style="color:#fff;opacity:.9">Tap its spot on a rack.</div></div><button onclick="slotTapped('')">Skip</button></div>` : ''}
     ${fridge}
     ${placing ? '' : `<p class="sub">${l.bottles.length} bottle${l.bottles.length===1?'':'s'}${l.capacity ? ` of ${l.capacity}` : ''} · ${esc(code)}</p>
     <button class="big" onclick="addWineHere('${esc(code)}')">Add wine to ${esc(l.name)}</button>
