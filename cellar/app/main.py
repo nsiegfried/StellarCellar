@@ -950,6 +950,8 @@ def regions_apply(body: RegionApply, session: Session = Depends(get_session)):
 def region_about(region: str = "", country: str = "", session: Session = Depends(get_session)):
     key = f"about:{region.strip().lower()}|{country.strip().lower()}"
     cached = get_setting(session, key)
+    if cached and not cached.rstrip().endswith((".", "!", "?")):
+        cached = ""          # an earlier reply was cut off mid-sentence; ask again
     lat, lon, precision = regions.locate(region, country)
     if not cached:
         cached = ai.about_region(region or country, country) or ""

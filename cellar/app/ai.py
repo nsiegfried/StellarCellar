@@ -52,7 +52,7 @@ def recommend(food, occasion, cands, taste_profile: str = ""):
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"),
-            max_tokens=700,
+            max_tokens=2500,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -99,7 +99,7 @@ def read_label(image_b64: str, media_type: str):
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"),
-            max_tokens=400,
+            max_tokens=2000,
             system=LABEL_SYSTEM,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": media_type,
@@ -147,21 +147,31 @@ def _client():
     return anthropic.Anthropic(api_key=key) if key else None
 
 
+def _json_reply(text):
+    m = re.search(r"\{.*\}", text or "", re.S)
+    if not m:
+        raise ValueError("no JSON in reply")
+    return json.loads(m.group(0))
+
+
 def suggest_regions(wines):
-    """wines: [{id, label}] -> ([{id, region, country, confidence}], error)"""
+    """wines: [{id, label}] -> ([{id, region, country, confidence}], error). Asks in batches of 20."""
     client = _client()
     if not client:
         return None, "Region lookup needs an Anthropic API key in the add-on options."
+    rows = []
     try:
-        resp = client.messages.create(
-            model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=2000, system=REGION_SYSTEM,
-            messages=[{"role": "user", "content": json.dumps({"wines": wines[:80]})}])
-        text = "".join(getattr(b, "text", "") for b in resp.content)
-        data = json.loads(re.search(r"\{.*\}", text, re.S).group(0))
+        for i in range(0, min(len(wines), 200), 20):
+            resp = client.messages.create(
+                model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=6000, system=REGION_SYSTEM,
+                messages=[{"role": "user", "content": json.dumps({"wines": wines[i:i + 20]})}])
+            text = "".join(getattr(b, "text", "") for b in resp.content)
+            rows += _json_reply(text).get("wines", [])
     except Exception as exc:
-        return None, f"Region lookup failed ({type(exc).__name__})."
+        if not rows:
+            return None, f"Region lookup failed ({type(exc).__name__}). Try again in a minute."
     out = []
-    for w in data.get("wines", []):
+    for w in rows:
         try:
             out.append({"id": int(w.get("id")), "region": str(w.get("region") or "")[:60],
                         "country": str(w.get("country") or "")[:40],
@@ -177,8 +187,10 @@ def about_region(region: str, country: str):
         return None
     try:
         resp = client.messages.create(
-            model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=200, system=ABOUT_SYSTEM,
+            model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=1500, system=ABOUT_SYSTEM,
             messages=[{"role": "user", "content": f"{region}, {country}".strip(", ")}])
-        return "".join(getattr(b, "text", "") for b in resp.content).strip()[:400]
+        if getattr(resp, "stop_reason", "") == "max_tokens":
+            return None          # cut off; don't cache half a sentence
+        return "".join(getattr(b, "text", "") for b in resp.content).strip()[:600]
     except Exception:
         return None
