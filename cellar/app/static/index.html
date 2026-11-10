@@ -588,7 +588,7 @@ async function slotTapped(slot){
 // layout editor
 async function editLayout(code){
   const l = await api('location/' + code);
-  const lay = l.layout || {order:'top_down', racks:[{name:'A',across:8,deep:2},{name:'B',across:8,deep:2},{name:'C',across:8,deep:2},{name:'D',across:8,deep:2},{name:'E',across:8,deep:2},{name:'F',across:8,deep:2},{name:'G',across:7,deep:2}]};
+  const lay = l.layout || {order:'top_down', racks:['A','B','C','D','E','F','G'].map(n => ({name:n,across:8,deep:2})).concat([{name:'H',across:4,deep:1}])};
   window.__lay = lay;
   const row = (r, i) => `<div class="grid2" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end"><div><label>Rack</label><input value="${esc(r.name)}" onchange="__lay.racks[${i}].name=this.value"></div><div><label>Across</label><input type="number" min="1" max="30" value="${r.across}" onchange="__lay.racks[${i}].across=Number(this.value)"></div><div><label>Deep</label><input type="number" min="1" max="3" value="${r.deep}" onchange="__lay.racks[${i}].deep=Number(this.value)"></div><button class="ghost" style="margin-bottom:12px" onclick="__lay.racks.splice(${i},1);editLayout('${code}')">✕</button></div>`;
   topbar('Rack layout', {back:'#/location/' + code, noGear:true});

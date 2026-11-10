@@ -165,8 +165,8 @@ def tasting_out(t: Tasting) -> dict:
             "tasted_on": t.tasted_on.isoformat() if t.tasted_on else None, "history": t.history}
 
 
-DEFAULT_FRIDGE = {"order": "top_down",
-                  "racks": [{"name": n, "across": 8, "deep": 2} for n in "ABCDEF"] + [{"name": "G", "across": 7, "deep": 2}]}
+DEFAULT_FRIDGE = {"order": "top_down",   # 7 x 16 + 4 = 116; edit per rack in the app
+                  "racks": [{"name": n, "across": 8, "deep": 2} for n in "ABCDEFG"] + [{"name": "H", "across": 4, "deep": 1}]}
 
 
 def parse_layout(loc: Location) -> Optional[dict]:
