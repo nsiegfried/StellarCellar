@@ -127,7 +127,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .door .name{position:absolute;top:min(22%,170px);left:0;right:0;text-align:center;color:#fff;font-weight:700;font-size:var(--fs-title);text-shadow:0 2px 8px rgba(0,0,0,.7);z-index:2}
 .fridge .door .hint{position:absolute;top:calc(min(22%,170px) + 2.2em);left:0;right:0;text-align:center;color:#fff;opacity:.85;font-size:var(--fs-sub);z-index:2}
 .fridge.open .door{transform:rotateY(-112deg);opacity:0;pointer-events:none}
-.fridge.closing .door{transition:opacity .15s ease,transform .9s cubic-bezier(.4,.1,.2,1) .1s;opacity:1;transform:none}
+.fridge.closing .door{transition:opacity .12s ease,transform .45s cubic-bezier(.4,.1,.2,1) .05s;opacity:1;transform:none}
 .fridge .cap{color:#fff;opacity:.8;font-size:var(--fs-sub);text-align:center;margin-top:6px}
 .legend{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-size:var(--fs-sub);color:var(--muted);margin-bottom:8px}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:4px}
@@ -163,7 +163,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.13.4';
+const APP_VERSION = '0.14.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
@@ -355,7 +355,8 @@ async function addPlace(){
 let pendingLabelFile = null;
 function addForm(){
   const y = new Date().getFullYear();
-  topbar('Add bottles', {back:'#/cellar', noGear:true});
+  const slotNote = sessionStorage.getItem('addSlot');
+  topbar(slotNote ? 'Add a bottle at ' + slotNote : 'Add bottles', {back:'#/cellar', noGear:true});
   view.innerHTML = `
     <input type="file" id="labelFile" accept="image/*" capture="environment" style="display:none" onchange="scanLabelFile(this.files[0])">
     <button class="big ghost" onclick="labelFile.click()">📷 Photo the label to fill this in</button>
@@ -416,6 +417,13 @@ async function saveBottles(){
   try {
     const r = await api('bottles', {method:'POST', body: JSON.stringify(body)});
     const n = r.codes.length;
+    const addSlot = sessionStorage.getItem('addSlot'); sessionStorage.removeItem('addSlot');
+    if (addSlot && body.location_code) {
+      try { await api(`bottle/${r.codes[0]}/slot`, {method:'POST', body: JSON.stringify({location_code: body.location_code, slot: addSlot})}); } catch (_) {}
+      location.hash = `#/location/${body.location_code}/find/${r.codes[0]}`;
+      toast(`Saved ${n} × ${r.wine}${n > 1 ? `; first one at ${addSlot}, the rest under "Slot not recorded"` : ` at ${addSlot}`}.`, `Print ${n} label${n>1?'s':''}`, () => printLabels(r.codes));
+      return;
+    }
     location.hash = '#/bottle/' + r.codes[0];
     toast(`Saved ${n} × ${r.wine}.`, `Print ${n} label${n>1?'s':''}`, () => printLabels(r.codes));
   } catch (e) { document.getElementById('addMsg').innerHTML = `<p class="sub">${esc(e.message)}</p>`; btn.disabled = false; btn.textContent = 'Save'; }
@@ -598,7 +606,10 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
     return zoneHdr + `<div class="rack cols ${isHit ? 'hit' : ''}" data-rack="${esc(r.name)}" style="--s:clamp(28px, calc((min(100vw, 420px) - 76px) / ${r.across} - 8px), 46px);--peek:13px"><span class="lbl">${esc(r.name)}</span>${cells.join('')}</div>`;
   });
   const used = loc.bottles.length, cap = loc.capacity || 0;
-  return `<div class="legend"><span><i style="background:${COLOR.red}"></i>Red</span><span><i style="background:${COLOR.white}"></i>White</span><span><i style="background:${COLOR.rose}"></i>Rosé</span><span><i style="background:${COLOR.sparkling}"></i>Sparkling</span><span>★ 90+</span></div>
+  const hintSeen = Number(localStorage.getItem('sc_fridge_hint') || 0);
+  if (!placing && hintSeen < 3) localStorage.setItem('sc_fridge_hint', hintSeen + 1);
+  const hint = !placing && hintSeen < 3 ? '<p class="sub" style="text-align:center;margin:-2px 0 8px">Tap a bottle for details, or an empty spot to add one.</p>' : '';
+  return `<div class="legend"><span><i style="background:${COLOR.red}"></i>Red</span><span><i style="background:${COLOR.white}"></i>White</span><span><i style="background:${COLOR.rose}"></i>Rosé</span><span><i style="background:${COLOR.sparkling}"></i>Sparkling</span><span>★ 90+</span></div>${hint}
     <div class="fridge" id="fridge">
       <div class="body"><div class="inner">${racks.join('')}</div>
         <div class="cap">${used} of ${cap} bottles${unplaced.length ? ` · ${unplaced.length} on a rack, slot unknown` : ''}${hitBottle && !hitBottle.slot ? ' · this bottle is in here, slot not recorded' : ''}${lay.racks.some(r => r.deep > 1 && !r.bulk) ? '<br><span style="opacity:.75">Two deep: the front bottle sits on the rail, the back one peeks out above it.</span>' : ''}</div></div>
@@ -623,11 +634,54 @@ async function cellTapped(rack, pos, deep, placing){
     }
     return slotTapped(id);
   }
-  const filled = layers.filter(l => l.b);
-  if (!filled.length) return;
-  if (filled.length === 1) { location.hash = '#/bottle/' + filled[0].b.code; return; }
-  const code = await choose(`Rack ${rack}, position ${pos}`, filled.map(l => ({label: l.b.label, sub: l.d === 0 ? 'Front' : 'Back', value: l.b.code})));
-  if (code) location.hash = '#/bottle/' + code;
+  const where = d => deep === 1 ? '' : d === 0 ? 'front' : d === 1 ? 'back' : 'far back';
+  const opts = layers.map(l => l.b
+    ? {label: l.b.label, sub: deep > 1 ? `Open · ${where(l.d)}` : 'Open', value: 'open:' + l.b.code}
+    : {label: deep > 1 ? `Add wine to the ${where(l.d)}` : 'Add wine here', sub: 'Pick from New arrivals or add a new bottle', value: 'fill:' + l.id});
+  let pick = opts.length === 1 ? opts[0].value : await choose(`Rack ${rack}, position ${pos}`, opts);
+  if (!pick) return;
+  const [kind, val] = [pick.slice(0, pick.indexOf(':')), pick.slice(pick.indexOf(':') + 1)];
+  const [, , locCode] = location.hash.split('/');
+  if (kind === 'open') location.hash = '#/bottle/' + val;
+  else location.hash = `#/location/${locCode}/fill/${val}`;
+}
+
+// ---------- fill an empty spot: New arrivals first, then elsewhere, search, or a new bottle ----------
+async function fillPage(locCode, slot){
+  const [l, all, locs] = await Promise.all([api('location/' + locCode), api('bottles'), api('locations')]);
+  const holding = (locs.find(x => x.holding) || {}).code;
+  const candidates = all.filter(b => !(b.location_code === locCode && b.slot));
+  const groups = [];
+  const onRack = candidates.filter(b => b.location_code === locCode);
+  if (onRack.length) groups.push(['On this fridge, slot not recorded', onRack]);
+  const arrivals = candidates.filter(b => b.location_code === holding);
+  if (arrivals.length) groups.push(['New arrivals', arrivals]);
+  const byPlace = {};
+  candidates.filter(b => b.location_code !== locCode && b.location_code !== holding).forEach(b => (byPlace[b.location] = byPlace[b.location] || []).push(b));
+  Object.entries(byPlace).forEach(g => groups.push(g));
+  window.__fillGroups = groups;
+  topbar('Add wine to ' + slot, {back:'#/location/' + locCode, noGear:true});
+  const dedupe = list => { const g = {}; list.forEach(b => { (g[b.label] = g[b.label] || {...b, count:0, codes:[]}); g[b.label].count++; g[b.label].codes.push(b.code); }); return Object.values(g); };
+  const row = b => `<div class="card tap" onclick="fillWith('${esc(b.codes[0])}','${esc(locCode)}','${esc(slot)}')"><div class="row"><div class="col"><div class="title">${esc(b.label)}${b.count > 1 ? ` <span class="sub">×${b.count}</span>` : ''}</div><div class="meta"><span>${esc(b.location)}</span>${b.price != null ? `<span>${money(b.price, CUR)}</span>` : ''}${b.score != null ? `<span><b>${b.score}</b></span>` : ''}${b.reserved_for ? `<span class="score sv" style="padding:2px 8px">Held for ${esc(b.reserved_for)}</span>` : ''}</div></div>${badge(b.status)}</div></div>`;
+  const render = q => {
+    const term = (q || '').trim().toLowerCase();
+    return groups.map(([name, list]) => {
+      const shown = dedupe(list.filter(b => !term || b.label.toLowerCase().includes(term)));
+      return shown.length ? `<h2>${esc(name)} <span class="sub">${list.length}</span></h2>${shown.map(row).join('')}` : '';
+    }).join('') || `<div class="card empty">${term ? 'No bottles match.' : 'Every bottle already has a spot.'}</div>`;
+  };
+  view.innerHTML = `
+    <button class="big" onclick="sessionStorage.setItem('addTo','${esc(locCode)}');sessionStorage.setItem('addSlot','${esc(slot)}');location.hash='#/add'">📷 Add a new bottle here</button>
+    <input id="fillQ" placeholder="Search your bottles" style="margin-top:12px">
+    <div id="fillList">${render('')}</div>`;
+  document.getElementById('fillQ').oninput = e => { document.getElementById('fillList').innerHTML = render(e.target.value); };
+}
+async function fillWith(code, locCode, slot){
+  try {
+    const r = await api(`bottle/${code}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot})});
+    toast(`Placed at ${r.slot} in ${r.location}.`);
+    go('#/location/' + locCode + '/find/' + code);
+  } catch (e) { toast(e.message); }
 }
 function openDoor(delay = 350){
   setTimeout(() => {
@@ -640,7 +694,7 @@ function closeFridgeThen(parent){
   const f = document.getElementById('fridge');
   if (!f || !f.classList.contains('open')) { goBack(parent); return; }
   f.classList.remove('open'); f.classList.add('closing');
-  setTimeout(() => goBack(parent), 950);
+  setTimeout(() => goBack(parent), 500);
 }
 
 // place a bottle by tapping a slot
@@ -702,6 +756,7 @@ async function clearLayout(code){ const ok = await choose('Remove the rack layou
 async function locationPage(code, mode, arg){
   if (mode === 'layout') return editLayout(code);
   if (mode === 'pick') return pickPage(code);
+  if (mode === 'fill' && arg) return fillPage(code, arg);
   sessionStorage.removeItem('pickReturn');
   const l = await api('location/' + code);
   const placing = mode === 'place' && arg;
@@ -966,6 +1021,7 @@ async function route(){
   const tab = TAB_FOR[page] ?? 'tonight';
   document.querySelectorAll('nav a[data-tab]').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   window.scrollTo(0, 0);
+  const slow = setTimeout(() => { view.innerHTML = page === 'location' ? '<div class="fridge" style="opacity:.35"><div class="body"><div class="inner" style="min-height:60vh"></div></div></div>' : '<div class="card empty">Loading…</div>'; }, 250);
   try {
     if (page === 'scan') await scan();
     else if (page === 'cellar') await cellar();
@@ -980,7 +1036,8 @@ async function route(){
     else if (page === 'journal' && arg === 'new') await journalNew(location.hash.split('/')[3] ? location.hash.split('/')[3].toUpperCase() : null);
     else if (page === 'journal') await journal();
     else await tonight();
-  } catch (e) { view.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; }
+  } catch (e) { view.innerHTML = `<div class="card empty">${esc(e.message)}<br><br><button class="ghost" onclick="route()">Try again</button></div>`; }
+  finally { clearTimeout(slow); }
 }
 window.addEventListener('hashchange', route);
 route();
