@@ -265,3 +265,17 @@ def test_presets_zones_and_bulk():
         assert client.post(f"/api/bottle/{b['codes'][1]}/slot", json={"location_code": loc["code"], "slot": "A"}).status_code == 400
         det = client.get(f"/api/location/{loc['code']}").json()
         assert sum(1 for x in det["bottles"] if x["slot"] == "Z") == 2   # bulk does not bump
+
+
+def test_map_and_region_apply():
+    with TestClient(app) as client:
+        r = client.post("/api/bottles", json={"producer": "MapTest Winery", "quantity": 2}).json()
+        m = client.get("/api/map").json()
+        assert any(u["label"].startswith("MapTest") for u in m["unplaced"])
+        wine_id = client.get(f"/api/bottle/{r['codes'][0]}").json()["wine_id"]
+        assert client.post("/api/regions/apply", json={"items": [{"id": wine_id, "region": "Paso Robles", "country": "USA"}]}).json()["updated"] == 1
+        m2 = client.get("/api/map").json()
+        pin = next(p for p in m2["pins"] if p["name"] == "Paso Robles")
+        assert pin["count"] >= 2 and abs(pin["lat"] - 35.63) < 0.01 and pin["precision"] == "region"
+        a = client.get("/api/region-about?region=Paso%20Robles&country=USA").json()
+        assert a["precision"] == "region"   # about text is empty without an API key, coordinates still resolve

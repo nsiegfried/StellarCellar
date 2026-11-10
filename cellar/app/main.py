@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, delete as sql_delete, select
 
-from . import ai, importer, qr, zebra
+from . import ai, importer, qr, regions, zebra
 from .db import get_session, init_db
 from .logic import build_picks, effective_price, window_status
 from .models import Bottle, Consumption, DrinkingWindow, Location, Setting, Tasting, Wine, WishItem, utcnow
@@ -879,6 +879,84 @@ def import_wine_profile(body: ImportBody, session: Session = Depends(get_session
     set_setting(session, "default_taster", body.taster)
     session.commit()
     return report
+
+
+# ---------- map ----------
+
+@app.get("/api/map")
+def cellar_map(session: Session = Depends(get_session)):
+    """Pins for every place the cellar's wines come from, plus wines we can't place yet."""
+    pins, unplaced = {}, []
+    for b in in_cellar(session):
+        wine = session.get(Wine, b.wine_id)
+        lat, lon, precision = regions.locate(wine.region, wine.country)
+        c = candidate(session, b)
+        if lat is None:
+            unplaced.append({"wine_id": wine.id, "label": c["label"]})
+            continue
+        key = (wine.region or wine.country or "").strip() or "Unknown"
+        p = pins.setdefault(key, {"name": key, "country": wine.country, "lat": lat, "lon": lon,
+                                  "precision": precision, "count": 0, "colors": {}, "bottles": []})
+        p["count"] += 1
+        p["colors"][wine.color] = p["colors"].get(wine.color, 0) + 1
+        p["bottles"].append(c)
+    seen, ul = set(), []
+    for u in unplaced:
+        if u["wine_id"] not in seen:
+            seen.add(u["wine_id"])
+            ul.append(u)
+    return {"pins": sorted(pins.values(), key=lambda p: -p["count"]), "unplaced": ul}
+
+
+@app.post("/api/regions/suggest")
+def regions_suggest(session: Session = Depends(get_session)):
+    """Ask Claude for region and country of wines that have no region yet. Nothing is saved here."""
+    wines = session.exec(select(Wine)).all()
+    todo = [w for w in wines if not (w.region or "").strip()
+            and session.exec(select(Bottle).where(Bottle.wine_id == w.id, Bottle.status == "in_cellar")).first()]
+    if not todo:
+        return {"suggestions": []}
+    out, err = ai.suggest_regions([{"id": w.id, "label": wine_label(w)} for w in todo])
+    if err:
+        raise HTTPException(503, err)
+    by_id = {w.id: w for w in todo}
+    return {"suggestions": [{**s, "label": wine_label(by_id[s["id"]]),
+                             "mappable": regions.locate(s["region"], s["country"])[2] is not None}
+                            for s in out if s["id"] in by_id]}
+
+
+class RegionApply(BaseModel):
+    items: List[dict]   # [{id, region, country}]
+
+
+@app.post("/api/regions/apply")
+def regions_apply(body: RegionApply, session: Session = Depends(get_session)):
+    n = 0
+    for it in body.items[:200]:
+        w = session.get(Wine, int(it.get("id", 0)))
+        if not w:
+            continue
+        if str(it.get("region") or "").strip():
+            w.region = str(it["region"]).strip()[:60]
+        if str(it.get("country") or "").strip():
+            w.country = str(it["country"]).strip()[:40]
+        session.add(w)
+        n += 1
+    session.commit()
+    return {"updated": n}
+
+
+@app.get("/api/region-about")
+def region_about(region: str = "", country: str = "", session: Session = Depends(get_session)):
+    key = f"about:{region.strip().lower()}|{country.strip().lower()}"
+    cached = get_setting(session, key)
+    lat, lon, precision = regions.locate(region, country)
+    if not cached:
+        cached = ai.about_region(region or country, country) or ""
+        if cached:
+            set_setting(session, key, cached)
+            session.commit()
+    return {"region": region, "country": country, "about": cached, "lat": lat, "lon": lon, "precision": precision}
 
 
 # ---------- backup: whole database in and out ----------

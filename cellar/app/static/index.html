@@ -89,6 +89,15 @@ nav a.scan svg{stroke:#fff}
 .bcard .tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}
 .bcard .sec{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .bcard .sec button{min-height:44px;padding:10px;font-size:var(--fs-sub)}
+.worldmap{width:100%;display:block;border-radius:16px;background:linear-gradient(180deg,#dfe8ee,#cfdbe4);border:1px solid var(--line)}
+@media(prefers-color-scheme:dark){.worldmap{background:linear-gradient(180deg,#1c2630,#151c24)}}
+.worldmap .land{fill:#f6f1e7;stroke:#c9bfae;stroke-width:1.2;stroke-linejoin:round}
+@media(prefers-color-scheme:dark){.worldmap .land{fill:#3a332d;stroke:#5a5048}}
+.worldmap .pin{stroke:#fff;stroke-width:3;cursor:pointer}
+.worldmap .pin.focus{stroke:var(--gold);stroke-width:6}
+.worldmap .halo{fill:none;stroke:var(--gold);stroke-width:4;opacity:.7}
+.mapchips{display:flex;gap:8px;overflow-x:auto;margin:10px 0 4px;padding-bottom:4px}
+.mapchips .chip{white-space:nowrap}
 #toast{position:fixed;left:14px;right:14px;bottom:calc(var(--nav-h) + 14px + env(safe-area-inset-bottom));background:var(--ink);color:var(--bg);padding:14px;border-radius:14px;display:none;z-index:9;overflow:hidden}
 #toast .trow{display:flex;justify-content:space-between;align-items:center;gap:12px}
 #toast button{background:var(--bg);color:var(--ink);padding:8px 14px;min-height:40px}
@@ -175,7 +184,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.14.3';
+const APP_VERSION = '0.15.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -349,6 +358,7 @@ async function cellar(){
   view.innerHTML = `
     <input id="q" placeholder="Search producer or wine" oninput="searchDebounced()"><div id="results"></div>
     ${total === 0 ? '<div class="card empty">No bottles yet. Tap + to add your first, or Scan to read a label.</div>' : ''}
+    <div class="card tap row" onclick="location.hash='#/map'"><div class="title">🌍 Where your wines come from</div><span class="sub">›</span></div>
     <h2>Places</h2>
     ${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="col"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">holding</span>' : ''}</div><div class="meta"><span>${l.count}${l.capacity ? ' of ' + l.capacity : ''} bottle${l.count===1&&!l.capacity?'':'s'}</span>${l.ready != null ? `<span>${l.ready} ready</span>` : ''}${l.kind === 'fridge' ? '<span>fridge</span>' : ''}</div></div><span class="sub">›</span></div></div>`).join('')}
     <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
@@ -465,7 +475,7 @@ async function bottle(code){
     : `<span>📍 <b>${esc(b.location)}${b.slot ? ' · ' + esc(b.slot) : ''}</b></span>`;
   view.innerHTML = `
     <div class="card">
-      <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(subline)}</div></div>${badge(inCellar ? b.status : incoming ? 'unknown' : b.bottle_status === 'gifted' ? 'gifted' : 'opened')}</div>
+      <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(subline)}</div><a class="sub" style="color:var(--wine);text-decoration:none;font-weight:600" href="#/map/r/${encodeURIComponent((b.region || '') + '|' + (b.country || ''))}">🌍 Where is this from?</a></div>${badge(inCellar ? b.status : incoming ? 'unknown' : b.bottle_status === 'gifted' ? 'gifted' : 'opened')}</div>
       ${b.reserved_for ? `<div class="banner" style="margin:10px 0 0"><div>Held for ${esc(b.reserved_for)}${b.reserved_note ? `<div class="sub" style="color:#fff;opacity:.9">${esc(b.reserved_note)}</div>` : ''}</div><button onclick="releaseHold('${esc(code)}')">Release</button></div>` : ''}
       <div class="meta" style="margin:10px 0 14px">${whereLink}${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
       ${inCellar ? `<div class="grid2"><button class="big" id="drinkBtn" onclick="drink('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Drink this</button><button class="big ghost" id="giftBtn" onclick="giftBottle('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Gift this</button></div>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
@@ -748,6 +758,71 @@ async function swapDepth(code, locCode, fromId, toId){
     if (occupant) await api(`bottle/${occupant.code}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot: fromId})});
     closeSheet(); toast(occupant ? 'Swapped front and back.' : `Moved to ${toId}.`); go('#/location/' + locCode + '/find/' + code);
   } catch (e) { toast(e.message); }
+}
+
+// ---------- world map ----------
+let WORLD = null;
+async function worldPath(){ if (!WORLD) WORLD = await (await fetch('static/world.path')).text(); return WORLD; }
+const MAP_W = 2000, MAP_H = 1000;
+const proj = (lat, lon) => [(lon + 180) / 360 * MAP_W, (90 - lat) / 180 * MAP_H];
+const VIEWS = {world:[0, 40, 2000, 780], americas:[180, 120, 560, 640], europe:[920, 150, 280, 190], south:[560, 540, 1250, 300]};
+function pinColor(colors){ const top = Object.entries(colors || {}).sort((a, b) => b[1] - a[1])[0]; return COLOR[top ? top[0] : 'red'] || COLOR.red; }
+function mapSvg(d, pins, view, focus){
+  const [vx, vy, vw, vh] = view, k = vw / 2000;
+  const dots = pins.map((p, i) => { const [x, y] = proj(p.lat, p.lon); const r = (14 + Math.sqrt(p.count) * 9) * Math.max(k, .12) ; const f = focus && p.name === focus;
+    return `${f ? `<circle class="halo" cx="${x}" cy="${y}" r="${r * 2}"/>` : ''}<circle class="pin ${f ? 'focus' : ''}" cx="${x}" cy="${y}" r="${r}" fill="${pinColor(p.colors)}" style="stroke-width:${3 * Math.max(k, .12)}" onclick="pinSheet(${i})"><title>${esc(p.name)}: ${p.count}</title></circle>`; }).join('');
+  return `<svg class="worldmap" viewBox="${vx} ${vy} ${vw} ${vh}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Map of where your wines come from"><path class="land" d="${d}" style="stroke-width:${1.2 * k}"/>${dots}</svg>`;
+}
+let MAPDATA = null;
+async function mapPage(focusArg){
+  const [d, m] = await Promise.all([worldPath(), api('map')]);
+  MAPDATA = m;
+  let mapView = VIEWS.world, focus = null, about = null;
+  if (focusArg) {
+    const [region, country] = decodeURIComponent(focusArg).split('|');
+    about = await api(`region-about?region=${encodeURIComponent(region || '')}&country=${encodeURIComponent(country || '')}`);
+    focus = region || country;
+    if (about.lat != null) { const [x, y] = proj(about.lat, about.lon); const w = about.precision === 'region' ? 220 : 520; mapView = [x - w / 2, y - w * 0.3, w, w * 0.6];
+      if (!m.pins.some(p => p.name === focus)) m.pins.push({name: focus, country, lat: about.lat, lon: about.lon, count: 1, colors: {}, bottles: []}); }
+  }
+  topbar(focusArg ? 'Where it\'s from' : 'Your wines around the world', {back: focusArg ? null : '#/cellar', noGear: true});
+  if (focusArg) document.getElementById('top').innerHTML = `<button class="tbtn" onclick="history.back()">‹ Back</button><div class="ttl">Where it's from</div><span class="spacer"></span>`;
+  const total = m.pins.reduce((a, p) => a + p.count, 0);
+  const area = document.getElementById('view');
+  area.innerHTML = `
+    ${focusArg ? `<div class="card"><div class="title" style="font-size:var(--fs-title)">${esc(focus || 'Unknown')}</div>${about.country && about.country !== focus ? `<div class="sub">${esc(about.country)}</div>` : ''}${about.about ? `<p style="margin:8px 0 0">${esc(about.about)}</p>` : about.lat == null ? '<p class="sub" style="margin:8px 0 0">This region isn\'t on the map yet. Add it under Edit details, or use Find regions on the full map.</p>' : ''}</div>` : `<p class="sub">${total} bottle${total === 1 ? '' : 's'} from ${m.pins.length} place${m.pins.length === 1 ? '' : 's'}. Tap a pin or a place below.</p>`}
+    ${focusArg ? '' : `<div class="mapchips">${[['world','World'],['americas','Americas'],['europe','Europe'],['south','Southern hemisphere']].map(([k, l]) => `<button class="chip ${k === 'world' ? 'on' : ''}" onclick="setMapView('${k}', this)">${l}</button>`).join('')}</div>`}
+    <div id="mapbox">${mapSvg(d, m.pins, mapView, focus)}</div>
+    ${focusArg ? `<button class="ghost" style="width:100%;margin-top:12px" onclick="location.hash='#/map'">See your whole cellar on the map</button>` : `
+      <h2>Places <span class="sub">${m.pins.length}</span></h2>
+      ${m.pins.map((p, i) => `<div class="card tap row" onclick="pinSheet(${i})"><div class="col"><div class="title">${esc(p.name)}</div><div class="sub">${p.country && p.country !== p.name ? esc(p.country) + ' · ' : ''}${p.count} bottle${p.count === 1 ? '' : 's'}${p.precision === 'country' ? ' · country only' : ''}</div></div><span class="sub">›</span></div>`).join('') || '<div class="card empty">No wines placed on the map yet.</div>'}
+      ${m.unplaced.length ? `<h2>Not on the map yet <span class="sub">${m.unplaced.length}</span></h2><div class="card"><p class="sub" style="margin-top:0">These wines have no region recorded. Claude can suggest regions from the producer names for you to check.</p><button class="big" onclick="location.hash='#/regions'">Find regions for ${m.unplaced.length} wine${m.unplaced.length === 1 ? '' : 's'}</button></div>` : ''}`}`;
+}
+function setMapView(k, el){ el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); el.classList.add('on'); worldPath().then(d => { document.getElementById('mapbox').innerHTML = mapSvg(d, MAPDATA.pins, VIEWS[k], null); }); }
+function pinSheet(i){
+  const p = MAPDATA.pins[i]; if (!p) return;
+  const groups = {}; p.bottles.forEach(b => { (groups[b.label] = groups[b.label] || {...b, count:0}).count++; });
+  openSheet(`<h3>${esc(p.name)}${p.country && p.country !== p.name ? ' · ' + esc(p.country) : ''}</h3>
+    ${Object.values(groups).map(b => `<button class="opt" onclick="closeSheet();location.hash='#/bottle/${esc(b.code)}'">${esc(b.label)}${b.count > 1 ? ' ×' + b.count : ''}<small>${esc(b.location)}${b.score != null ? ' · ' + b.score : ''} · ${STATUS[b.status] || ''}</small></button>`).join('') || '<p class="sub">No bottles in the cellar from here.</p>'}
+    <button class="ghost" style="width:100%" onclick="closeSheet();location.hash='#/map/r/${encodeURIComponent(p.name + '|' + (p.country || ''))}'">About ${esc(p.name)}</button>
+    <button class="ghost" style="width:100%;margin-top:8px;border:0" onclick="closeSheet()">Close</button>`);
+}
+async function regionsPage(){
+  topbar('Find regions', {back:'#/map', noGear:true});
+  view.innerHTML = '<div class="card empty">Asking Claude where these wines are from…</div>';
+  let res; try { res = await api('regions/suggest', {method:'POST'}); } catch (e) { if (e.session) return sessionEnded(); view.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
+  const items = res.suggestions;
+  window.__regionItems = items;
+  if (!items.length) { view.innerHTML = '<div class="card empty">Every wine in the cellar already has a region.</div>'; return; }
+  view.innerHTML = `<p class="sub">Check each suggestion. High and medium confidence are ticked; low ones are left for you. Edit any field before saving.</p>
+    ${items.map((s, i) => `<div class="card"><label style="display:flex;gap:10px;align-items:flex-start;color:var(--ink)"><input type="checkbox" id="rg${i}" style="width:auto;min-height:0;margin:4px 0 0" ${s.confidence !== 'low' && s.region ? 'checked' : ''}><span class="col"><span class="title">${esc(s.label)}</span><span class="sub" style="display:block">${esc(s.confidence)} confidence${s.mappable ? '' : ' · not on the map table yet'}</span></span></label>
+      <div class="grid2" style="margin-top:8px"><input id="rgr${i}" value="${esc(s.region)}" placeholder="Region"><input id="rgc${i}" value="${esc(s.country)}" placeholder="Country"></div></div>`).join('')}
+    <button class="big" onclick="saveRegions()">Save ticked regions</button>`;
+}
+async function saveRegions(){
+  const items = window.__regionItems.map((s, i) => ({id: s.id, region: document.getElementById('rgr' + i).value, country: document.getElementById('rgc' + i).value, on: document.getElementById('rg' + i).checked})).filter(x => x.on);
+  const r = await api('regions/apply', {method:'POST', body: JSON.stringify({items})});
+  toast(`Saved regions for ${r.updated} wine${r.updated === 1 ? '' : 's'}.`); location.hash = '#/map';
 }
 
 // ---------- fill an empty spot: New arrivals first, then elsewhere, search, or a new bottle ----------
@@ -1115,7 +1190,7 @@ async function saveSettings(){
 }
 
 // ---------- Router ----------
-const TAB_FOR = {list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
+const TAB_FOR = {map:'cellar', regions:'cellar', list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
 window.__navDepth = 0;
 window.addEventListener('hashchange', () => { window.__navDepth++; });
 async function route(){
@@ -1135,6 +1210,8 @@ async function route(){
     else if (page === 'settings') await settings();
     else if (page === 'edit' && arg) await editForm(arg.toUpperCase());
     else if (page === 'held') await heldPage();
+    else if (page === 'map') await mapPage(arg === 'r' ? location.hash.split('/').slice(3).join('/') : null);
+    else if (page === 'regions') await regionsPage();
     else if (page === 'gifts') await giftsPage();
     else if (page === 'list') await statusList(arg || 'all');
     else if (page === 'journal' && arg === 'new') await journalNew(location.hash.split('/')[3] ? location.hash.split('/')[3].toUpperCase() : null);

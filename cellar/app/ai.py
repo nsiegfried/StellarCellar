@@ -126,3 +126,59 @@ def read_label(image_b64: str, media_type: str):
     for k in ("producer", "name", "region", "country", "note"):
         data[k] = str(data[k] or "")[:120]
     return data, None
+
+
+REGION_SYSTEM = (
+    "You identify where wines come from. For each wine in the list, give the most specific well-known wine "
+    "region (an appellation or valley, e.g. 'Paso Robles', 'Napa Valley', 'Mendoza', 'Rioja') and the country. "
+    "Use your knowledge of the producer; do not guess wildly. Respond with JSON only, no prose and no fences: "
+    '{"wines": [{"id": 1, "region": "", "country": "", "confidence": "high|medium|low"}]}. '
+    "Use confidence low, and leave region empty, when you are not reasonably sure."
+)
+
+ABOUT_SYSTEM = (
+    "You write two short sentences about a wine region for a home wine app: where it is and what about the "
+    "place (climate, soil, geography) shapes its wines. Plain, friendly, no hype, no markdown, under 55 words."
+)
+
+
+def _client():
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    return anthropic.Anthropic(api_key=key) if key else None
+
+
+def suggest_regions(wines):
+    """wines: [{id, label}] -> ([{id, region, country, confidence}], error)"""
+    client = _client()
+    if not client:
+        return None, "Region lookup needs an Anthropic API key in the add-on options."
+    try:
+        resp = client.messages.create(
+            model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=2000, system=REGION_SYSTEM,
+            messages=[{"role": "user", "content": json.dumps({"wines": wines[:80]})}])
+        text = "".join(getattr(b, "text", "") for b in resp.content)
+        data = json.loads(re.search(r"\{.*\}", text, re.S).group(0))
+    except Exception as exc:
+        return None, f"Region lookup failed ({type(exc).__name__})."
+    out = []
+    for w in data.get("wines", []):
+        try:
+            out.append({"id": int(w.get("id")), "region": str(w.get("region") or "")[:60],
+                        "country": str(w.get("country") or "")[:40],
+                        "confidence": w.get("confidence") if w.get("confidence") in ("high", "medium", "low") else "low"})
+        except (TypeError, ValueError):
+            continue
+    return out, None
+
+
+def about_region(region: str, country: str):
+    client = _client()
+    if not client:
+        return None
+    try:
+        resp = client.messages.create(
+            model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=200, system=ABOUT_SYSTEM,
+            messages=[{"role": "user", "content": f"{region}, {country}".strip(", ")}])
+        return "".join(getattr(b, "text", "") for b in resp.content).strip()[:400]
+    except Exception:
+        return None
