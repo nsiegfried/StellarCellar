@@ -1,4 +1,5 @@
 import html
+import json
 import os
 import re
 import secrets
@@ -123,6 +124,8 @@ def candidate(session: Session, b: Bottle) -> dict:
         "location": loc.name if loc else "Unplaced",
         "reserved_for": b.reserved_for or "",
         "reserved_note": b.reserved_note or "",
+        "slot": b.slot or "",
+        "location_code": loc.code if loc else None,
     }
 
 
@@ -160,6 +163,44 @@ def tasting_out(t: Tasting) -> dict:
     return {"id": t.id, "wine_id": t.wine_id, "wine": t.wine_text, "vintage": t.vintage, "taster": t.taster,
             "score": t.score, "band": t.band, "verdict": t.verdict, "notes": t.notes, "where": t.where,
             "tasted_on": t.tasted_on.isoformat() if t.tasted_on else None, "history": t.history}
+
+
+DEFAULT_FRIDGE = {"order": "top_down",
+                  "racks": [{"name": n, "across": 8, "deep": 2} for n in "ABCDEF"] + [{"name": "G", "across": 7, "deep": 2}]}
+
+
+def parse_layout(loc: Location) -> Optional[dict]:
+    if not loc.layout:
+        return None
+    try:
+        return json.loads(loc.layout)
+    except ValueError:
+        return None
+
+
+def layout_capacity(loc: Location) -> Optional[int]:
+    lay = parse_layout(loc)
+    if not lay:
+        return None
+    return sum(int(r.get("across", 0)) * int(r.get("deep", 1)) for r in lay.get("racks", []))
+
+
+def validate_layout(lay: dict) -> dict:
+    racks = lay.get("racks") or []
+    if not 1 <= len(racks) <= 26:
+        raise HTTPException(400, "A layout needs 1 to 26 racks")
+    clean = []
+    seen = set()
+    for i, r in enumerate(racks):
+        name = str(r.get("name") or chr(65 + i)).strip()[:4]
+        if name in seen:
+            raise HTTPException(400, f"Rack name {name} is used twice")
+        seen.add(name)
+        across, deep = int(r.get("across", 8)), int(r.get("deep", 1))
+        if not 1 <= across <= 30 or not 1 <= deep <= 3:
+            raise HTTPException(400, "Each rack holds 1 to 30 across and 1 to 3 deep")
+        clean.append({"name": name, "across": across, "deep": deep})
+    return {"order": lay.get("order", "top_down"), "racks": clean}
 
 
 def known_people(session: Session) -> list:
@@ -591,6 +632,8 @@ def undo_drink(code: str, session: Session = Depends(get_session)):
 def move(code: str, body: MoveBody, session: Session = Depends(get_session)):
     b = get_bottle_or_404(session, code)
     loc = get_location_or_404(session, body.location_code)
+    if b.location_id != loc.id:
+        b.slot = ""
     b.location_id = loc.id
     session.add(b)
     session.commit()
@@ -604,6 +647,8 @@ def move_batch(body: MoveBatchBody, session: Session = Depends(get_session)):
     for raw in body.bottle_codes:
         b = session.exec(select(Bottle).where(Bottle.code == raw.upper())).first()
         if b:
+            if b.location_id != loc.id:
+                b.slot = ""
             b.location_id = loc.id
             session.add(b)
             moved.append(b.code)
@@ -839,8 +884,9 @@ def list_locations(session: Session = Depends(get_session)):
             select(Bottle).where(Bottle.location_id == loc.id, Bottle.status == "in_cellar")
         ).all()
         ready = sum(1 for b in bottles if candidate(session, b)["status"] in ("ready", "drink_soon"))
+        cap = layout_capacity(loc)
         out.append({"code": loc.code, "name": loc.name, "count": len(bottles), "ready": ready,
-                    "holding": loc.code == HOLDING_CODE})
+                    "holding": loc.code == HOLDING_CODE, "kind": loc.kind, "capacity": cap})
     return out
 
 
@@ -855,14 +901,72 @@ def create_location(body: LocationBody, session: Session = Depends(get_session))
     return {"code": loc.code, "name": loc.name}
 
 
+class LayoutBody(BaseModel):
+    kind: str = "fridge"
+    layout: Optional[dict] = None     # None clears the layout
+    name: Optional[str] = None
+
+
+@app.post("/api/location/{code}/layout")
+def set_layout(code: str, body: LayoutBody, session: Session = Depends(get_session)):
+    loc = get_location_or_404(session, code)
+    if body.name is not None and body.name.strip():
+        loc.name = body.name.strip()
+    if body.layout is None:
+        loc.layout = ""
+        loc.kind = "shelf"
+        for b in session.exec(select(Bottle).where(Bottle.location_id == loc.id)).all():
+            b.slot = ""
+            session.add(b)
+    else:
+        loc.layout = json.dumps(validate_layout(body.layout))
+        loc.kind = body.kind if body.kind in ("fridge", "rack") else "fridge"
+    session.add(loc)
+    session.commit()
+    return {"ok": True, "layout": parse_layout(loc), "capacity": layout_capacity(loc), "kind": loc.kind}
+
+
+class SlotBody(BaseModel):
+    location_code: str
+    slot: str = ""           # "" = somewhere on this place, position unknown
+
+
+@app.post("/api/bottle/{code}/slot")
+def set_slot(code: str, body: SlotBody, session: Session = Depends(get_session)):
+    """Place a bottle at a slot (e.g. A-3 or A-3b) in a laid-out place; also moves it there."""
+    b = get_bottle_or_404(session, code)
+    loc = get_location_or_404(session, body.location_code)
+    slot = body.slot.strip().upper()
+    if slot:
+        lay = parse_layout(loc)
+        if not lay:
+            raise HTTPException(400, "This place has no rack layout")
+        mm = re.fullmatch(r"([A-Z0-9]{1,4})-(\d{1,2})([A-C]?)", slot)
+        if not mm:
+            raise HTTPException(400, "Slot looks like A-3 or A-3B")
+        rack = next((r for r in lay["racks"] if r["name"].upper() == mm.group(1)), None)
+        if not rack or not 1 <= int(mm.group(2)) <= rack["across"] or (mm.group(3) and "ABC".index(mm.group(3)) >= rack["deep"]):
+            raise HTTPException(400, f"No slot {slot} in {loc.name}")
+        occupant = session.exec(select(Bottle).where(Bottle.location_id == loc.id, Bottle.slot == slot,
+                                                     Bottle.status == "in_cellar", Bottle.id != b.id)).first()
+        if occupant:
+            occupant.slot = ""          # bumped to "somewhere on this place"; the UI tells the user
+            session.add(occupant)
+    b.location_id = loc.id
+    b.slot = slot
+    session.add(b)
+    session.commit()
+    return {"ok": True, "location": loc.name, "slot": slot}
+
+
 @app.get("/api/location/{code}")
 def location_detail(code: str, session: Session = Depends(get_session)):
     loc = get_location_or_404(session, code)
     bottles = session.exec(
         select(Bottle).where(Bottle.location_id == loc.id, Bottle.status == "in_cellar")
     ).all()
-    return {"code": loc.code, "name": loc.name,
-            "bottles": [candidate(session, b) for b in bottles]}
+    return {"code": loc.code, "name": loc.name, "kind": loc.kind, "layout": parse_layout(loc),
+            "capacity": layout_capacity(loc), "bottles": [candidate(session, b) for b in bottles]}
 
 
 # ---------- printable labels ----------

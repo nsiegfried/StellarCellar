@@ -196,3 +196,31 @@ def test_static_scanner_library_served():
     with TestClient(app) as client:
         r = client.get("/static/jsQR.js")
         assert r.status_code == 200 and "jsQR" in r.text[:2000]
+
+
+def test_fridge_layout_and_slots():
+    with TestClient(app) as client:
+        loc = client.post("/api/locations", json={"name": "Wine Fridge"}).json()
+        lay = {"order": "top_down", "racks": [{"name": "A", "across": 8, "deep": 2}, {"name": "B", "across": 7, "deep": 2}]}
+        r = client.post(f"/api/location/{loc['code']}/layout", json={"kind": "fridge", "layout": lay}).json()
+        assert r["capacity"] == 30 and r["kind"] == "fridge"
+        assert client.post(f"/api/location/{loc['code']}/layout", json={"layout": {"racks": [{"name": "A", "across": 99}]}}).status_code == 400
+
+        b = client.post("/api/bottles", json={"producer": "Slot Test", "quantity": 2}).json()
+        a, b2 = b["codes"]
+        assert client.post(f"/api/bottle/{a}/slot", json={"location_code": loc["code"], "slot": "a-3"}).json()["slot"] == "A-3"
+        assert client.post(f"/api/bottle/{a}/slot", json={"location_code": loc["code"], "slot": "A-9"}).status_code == 400
+        assert client.post(f"/api/bottle/{a}/slot", json={"location_code": loc["code"], "slot": "A-3C"}).status_code == 400  # deep is 2
+        # second bottle takes the slot; first gets bumped to slot unknown
+        client.post(f"/api/bottle/{b2}/slot", json={"location_code": loc["code"], "slot": "A-3"})
+        det = client.get(f"/api/location/{loc['code']}").json()
+        slots = {x["code"]: x["slot"] for x in det["bottles"]}
+        assert slots[b2] == "A-3" and slots[a] == ""
+        assert det["capacity"] == 30 and det["layout"]["racks"][1]["across"] == 7
+        # moving to a plain place clears the slot
+        other = client.post("/api/locations", json={"name": "Pantry2"}).json()
+        client.post(f"/api/bottle/{b2}/move", json={"location_code": other["code"]})
+        assert client.get(f"/api/bottle/{b2}").json()["slot"] == ""
+        # clearing the layout clears slots and kind
+        r2 = client.post(f"/api/location/{loc['code']}/layout", json={"layout": None}).json()
+        assert r2["layout"] is None and r2["kind"] == "shelf"

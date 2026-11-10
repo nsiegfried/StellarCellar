@@ -25,6 +25,8 @@ class Location(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     code: str = Field(index=True, unique=True)
+    kind: str = "shelf"        # shelf | fridge | rack
+    layout: str = ""           # JSON: {"racks":[{"name":"A","across":8,"deep":2},...], "order":"top_down"}
 
 
 class Bottle(SQLModel, table=True):
@@ -36,6 +38,7 @@ class Bottle(SQLModel, table=True):
     tags: str = ""             # comma-separated, e.g. "collector,A+"
     reserved_for: str = ""     # person this bottle is held for; "" means it is ours to open
     reserved_note: str = ""    # occasion or reason
+    slot: str = ""             # position inside a laid-out place, e.g. "A-3" or "A-3b" (b = back row)
     purchase_price: Optional[float] = None
     est_value: Optional[float] = None
     currency: str = "USD"

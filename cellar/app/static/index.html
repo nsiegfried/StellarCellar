@@ -89,6 +89,30 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .guide div{width:min(62vw,260px);height:min(62vw,260px);border:3px solid rgba(255,255,255,.85);border-radius:18px}
 .banner{background:var(--warn);color:#fff;border-radius:14px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-weight:600}
 .banner button{background:#fff;color:var(--warn);padding:8px 14px;min-height:40px}
+/* fridge */
+.fridge{position:relative;max-width:420px;margin:0 auto 14px;perspective:1400px}
+.fridge .body{background:linear-gradient(180deg,#2b2a2e,#141317);border-radius:18px;padding:12px;box-shadow:0 18px 40px rgba(0,0,0,.35);position:relative}
+.fridge .inner{background:radial-gradient(ellipse at 50% 0%,#5a3b2a 0%,#241914 60%,#17110e 100%);border-radius:12px;padding:10px 10px 12px;min-height:200px;box-shadow:inset 0 0 40px rgba(0,0,0,.6)}
+.fridge .rack{display:grid;gap:6px;margin:8px 0;padding:8px 6px 10px;background:linear-gradient(180deg,rgba(0,0,0,0) 0,rgba(0,0,0,0) 78%,#8a5a35 78%,#5a3718 100%);border-radius:4px;position:relative}
+.fridge .rack.hit{outline:3px solid var(--gold);outline-offset:2px;border-radius:8px;animation:glow 1.4s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(184,134,11,.0)}50%{box-shadow:0 0 18px 4px rgba(184,134,11,.55)}}
+.fridge .rack .lbl{position:absolute;left:-2px;top:-6px;background:#8a5a35;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:0 6px 6px 0}
+.fridge .slot{aspect-ratio:1;border-radius:50%;background:rgba(255,255,255,.07);border:1.5px dashed rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;min-width:0;position:relative}
+.fridge .slot.filled{border:0;background:radial-gradient(circle at 35% 35%,#fff3 0,#0000 40%),var(--bc,#7b1e3a)}
+.fridge .slot.back{opacity:.72;transform:scale(.82)}
+.fridge .slot.hit{outline:3px solid var(--gold);outline-offset:3px;animation:glow 1.2s ease-in-out infinite;opacity:1;transform:none;z-index:2}
+.fridge .slot .star{position:absolute;top:-4px;right:-4px;font-size:10px;color:var(--gold)}
+.fridge .slot .n{font-size:9px;color:rgba(255,255,255,.45)}
+.fridge .slot.tap:active{filter:brightness(1.4)}
+.fridge .door{position:absolute;inset:0;border-radius:18px;background:linear-gradient(135deg,#d8d9dc,#a6a8ad 40%,#c9cbd0);transform-origin:left center;transition:transform .9s cubic-bezier(.4,.1,.2,1);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.fridge .door .glass{position:absolute;inset:18px 18px 18px 18px;border-radius:10px;background:linear-gradient(160deg,rgba(60,70,90,.85),rgba(20,25,35,.92));box-shadow:inset 0 0 0 2px rgba(255,255,255,.15)}
+.fridge .door .handle{position:absolute;right:8px;top:30%;bottom:30%;width:6px;border-radius:3px;background:linear-gradient(90deg,#eee,#999)}
+.fridge .door .name{position:relative;color:#fff;font-weight:700;font-size:var(--fs-title);text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.fridge.open .door{transform:rotateY(-108deg);pointer-events:none}
+.fridge .cap{color:#fff;opacity:.8;font-size:var(--fs-sub);text-align:center;margin-top:6px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-size:var(--fs-sub);color:var(--muted);margin-bottom:8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:4px}
+
 /* wide screens: left rail, two columns */
 @media(min-width:700px){
   :root{--fs:20px;--fs-sub:17px;--fs-badge:14px;--fs-h:20px;--fs-title:24px}
@@ -120,7 +144,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.11.0';
+const APP_VERSION = '0.12.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
@@ -215,7 +239,7 @@ async function tonight(){
       <div class="eyebrow">Tonight we'd open</div>
       <div class="big">${esc(hero.label)}</div>
       <div class="where">${esc(hero.location)}${hero.price != null ? ' · ' + money(hero.price, CUR) : ''}${hero.score != null ? ' · ' + hero.score + ' points' : ''} · ${STATUS[hero.status]}</div>
-      <div class="grid2"><button onclick="location.hash='#/bottle/${esc(hero.code)}'">Open this</button><button class="ghost" onclick="document.getElementById('food').focus()">Something else</button></div>
+      <div class="grid2"><button onclick="location.hash='#/bottle/${esc(hero.code)}'">Open this</button><button class="ghost" onclick="${hero.location_code ? `location.hash='#/location/${esc(hero.location_code)}/find/${esc(hero.code)}'` : `document.getElementById('food').focus()`}">${hero.location_code ? 'Show me where' : 'Something else'}</button></div>
     </div>` : s.total === 0 ? `<div class="card hero"><div class="big">Welcome to your cellar</div><div class="where">Add your first bottle: tap Scan and photograph the label.</div><button onclick="location.hash='#/add'">Add a bottle</button></div>` : '';
   const left = `
     ${heroHtml}
@@ -286,7 +310,7 @@ async function cellar(){
     <input id="q" placeholder="Search producer or wine" oninput="searchDebounced()"><div id="results"></div>
     ${total === 0 ? '<div class="card empty">No bottles yet. Tap + to add your first, or Scan to read a label.</div>' : ''}
     <h2>Places</h2>
-    ${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="col"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">holding</span>' : ''}</div><div class="meta"><span>${l.count} bottle${l.count===1?'':'s'}</span>${l.ready != null ? `<span>${l.ready} ready</span>` : ''}</div></div><span class="sub">›</span></div></div>`).join('')}
+    ${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="col"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">holding</span>' : ''}</div><div class="meta"><span>${l.count}${l.capacity ? ' of ' + l.capacity : ''} bottle${l.count===1&&!l.capacity?'':'s'}</span>${l.ready != null ? `<span>${l.ready} ready</span>` : ''}${l.kind === 'fridge' ? '<span>fridge</span>' : ''}</div></div><span class="sub">›</span></div></div>`).join('')}
     <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
     ${inc.length ? `<h2>On order <span class="sub">${inc.length}</span></h2>${inc.map(bottleRow).join('')}` : ''}
     <h2>More</h2>
@@ -389,10 +413,11 @@ async function bottle(code){
     <div class="card">
       <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div></div>${badge(inCellar ? b.status : incoming ? 'unknown' : b.bottle_status === 'gifted' ? 'gifted' : 'opened')}</div>
       ${b.reserved_for ? `<div class="banner" style="margin:10px 0 0"><div>Held for ${esc(b.reserved_for)}${b.reserved_note ? `<div class="sub" style="color:#fff;opacity:.9">${esc(b.reserved_note)}</div>` : ''}</div><button onclick="releaseHold('${esc(code)}')">Release</button></div>` : ''}
-      <div class="meta" style="margin:10px 0 14px"><span>📍 <b>${esc(b.location)}</b></span>${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
+      <div class="meta" style="margin:10px 0 14px"><span>📍 <b>${esc(b.location)}${b.slot ? ' · ' + esc(b.slot) : ''}</b></span>${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
       ${inCellar ? `<div class="grid2"><button class="big" id="drinkBtn" onclick="drink('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Drink this</button><button class="big ghost" id="giftBtn" onclick="giftBottle('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Gift this</button></div>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
     </div>
-    ${inCellar ? `<div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><button class="ghost" onclick="printLabels(['${esc(code)}'])">Print label</button></div>` : ''}
+    ${inCellar ? `<div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><button class="ghost" onclick="printLabels(['${esc(code)}'])">Print label</button></div>
+    ${b.location_code ? `<div class="grid2" style="margin-top:10px"><button onclick="location.hash='#/location/${esc(b.location_code)}/find/${esc(code)}'">Show me where</button><button class="ghost" onclick="placeInFridge('${esc(code)}','${esc(b.location_code)}')">${b.slot ? 'Slot ' + esc(b.slot) + ' · change' : 'Set the slot'}</button></div>` : ''}` : ''}
     <div class="grid2" style="margin-top:10px"><button class="ghost" onclick="location.hash='#/edit/${esc(code)}'">Edit details</button>${(inCellar || incoming) && !b.reserved_for ? `<button class="ghost" onclick="holdBottle('${esc(code)}')">Hold for someone</button>` : '<span></span>'}</div>
     <h2>Details</h2>
     <div class="card"><dl class="kv">
@@ -461,6 +486,7 @@ async function moveBottle(code){
   const pick = await choose('Move to which place?', ls.map(l => ({label: l.name, sub: `${l.count} bottles`, value: l.code}))); if (!pick) return;
   const l = ls.find(x => x.code === pick);
   await api(`bottle/${code}/move`, {method:'POST', body: JSON.stringify({location_code: l.code})});
+  if (l.kind === 'fridge' || l.capacity) { placeInFridge(code, l.code); return; }
   toast(`Moved to ${l.name}.`); bottle(code);
 }
 
@@ -513,14 +539,88 @@ async function saveEdit(code){
   catch (e) { document.getElementById('editMsg').textContent = e.message; btn.disabled = false; btn.textContent = 'Save changes'; }
 }
 
-// ---------- Location ----------
-async function locationPage(code){
+// ---------- Fridge view ----------
+const COLOR = {red:'#7b1e3a', white:'#d9c270', rose:'#e0848f', sparkling:'#c9a227', dessert:'#b06a1c', fortified:'#5a2a4a'};
+function slotId(rack, i, d){ return `${rack}-${i}${d === 0 ? '' : 'ABC'[d]}`; }
+function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
+  const lay = loc.layout; if (!lay) return '';
+  const byslot = {}; loc.bottles.forEach(b => { if (b.slot) byslot[b.slot] = b; });
+  const unplaced = loc.bottles.filter(b => !b.slot);
+  const hitBottle = highlightCode ? loc.bottles.find(b => b.code === highlightCode) : null;
+  const hitRack = hitBottle && hitBottle.slot ? hitBottle.slot.split('-')[0] : null;
+  const racks = lay.racks.map(r => {
+    const rows = [];
+    for (let d = r.deep - 1; d >= 0; d--) {            // back row drawn first (smaller), front row last
+      for (let i = 1; i <= r.across; i++) {
+        const id = slotId(r.name, i, d), b = byslot[id];
+        const hit = hitBottle && b && b.code === hitBottle.code;
+        const cls = ['slot', b ? 'filled' : '', d > 0 ? 'back' : '', hit ? 'hit' : '', (placing || b) ? 'tap' : ''].join(' ');
+        const style = b ? `--bc:${COLOR[b.color] || COLOR.red}` : '';
+        const title = b ? esc(b.label) : id;
+        const click = placing ? `onclick="${onSlot}('${id}')"` : b ? `onclick="location.hash='#/bottle/${esc(b.code)}'"` : '';
+        rows.push(`<div class="${cls}" style="${style};grid-column:${i}" title="${title}" ${click}>${b ? (b.score >= 90 ? '<span class="star">★</span>' : '') : `<span class="n">${i}</span>`}</div>`);
+      }
+    }
+    const rackHit = hitRack === r.name && !(hitBottle && hitBottle.slot.includes('-') && byslot[hitBottle.slot]) ? 'hit' : (hitRack === r.name ? 'hit' : '');
+    return `<div class="rack ${hitBottle && !hitBottle.slot ? '' : rackHit}" style="grid-template-columns:repeat(${r.across},1fr)"><span class="lbl">${esc(r.name)}</span>${rows.join('')}</div>`;
+  });
+  const used = loc.bottles.length, cap = loc.capacity || 0;
+  return `<div class="fridge" id="fridge">
+      <div class="body"><div class="inner">${racks.join('')}</div>
+        <div class="cap">${used} of ${cap} bottles${unplaced.length ? ` · ${unplaced.length} on a rack, slot unknown` : ''}${hitBottle && !hitBottle.slot ? ' · this bottle is in here, slot not recorded' : ''}</div></div>
+      <div class="door" onclick="document.getElementById('fridge').classList.add('open')"><div class="glass"></div><div class="handle"></div><div class="name">${esc(loc.name)}</div></div>
+    </div>
+    <div class="legend"><span><i style="background:${COLOR.red}"></i>Red</span><span><i style="background:${COLOR.white}"></i>White</span><span><i style="background:${COLOR.rose}"></i>Rosé</span><span><i style="background:${COLOR.sparkling}"></i>Sparkling</span><span>★ 90+</span></div>`;
+}
+function openDoor(delay = 350){ setTimeout(() => document.getElementById('fridge')?.classList.add('open'), delay); }
+
+// place a bottle by tapping a slot
+let placingCode = null;
+async function placeInFridge(bottleCode, locCode){ placingCode = bottleCode; location.hash = '#/location/' + locCode + '/place/' + bottleCode; }
+async function slotTapped(slot){
+  const [, , locCode] = location.hash.split('/');
+  try {
+    const r = await api(`bottle/${placingCode}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot})});
+    toast(`Placed at ${r.slot} in ${r.location}.`); const code = placingCode; placingCode = null; location.hash = '#/bottle/' + code;
+  } catch (e) { toast(e.message); }
+}
+
+// layout editor
+async function editLayout(code){
   const l = await api('location/' + code);
-  topbar(l.name, {back:'#/cellar', noGear:true});
+  const lay = l.layout || {order:'top_down', racks:[{name:'A',across:8,deep:2},{name:'B',across:8,deep:2},{name:'C',across:8,deep:2},{name:'D',across:8,deep:2},{name:'E',across:8,deep:2},{name:'F',across:8,deep:2},{name:'G',across:7,deep:2}]};
+  window.__lay = lay;
+  const row = (r, i) => `<div class="grid2" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end"><div><label>Rack</label><input value="${esc(r.name)}" onchange="__lay.racks[${i}].name=this.value"></div><div><label>Across</label><input type="number" min="1" max="30" value="${r.across}" onchange="__lay.racks[${i}].across=Number(this.value)"></div><div><label>Deep</label><input type="number" min="1" max="3" value="${r.deep}" onchange="__lay.racks[${i}].deep=Number(this.value)"></div><button class="ghost" style="margin-bottom:12px" onclick="__lay.racks.splice(${i},1);editLayout('${code}')">✕</button></div>`;
+  topbar('Rack layout', {back:'#/location/' + code, noGear:true});
+  view.innerHTML = `<p class="sub">Racks top to bottom. Across is bottles side by side; Deep is rows front to back. Capacity: <b>${lay.racks.reduce((a,r)=>a+r.across*r.deep,0)}</b></p>
+    <div class="card">${lay.racks.map(row).join('')}
+    <button class="ghost" style="width:100%" onclick="__lay.racks.push({name:String.fromCharCode(65+__lay.racks.length),across:8,deep:2});editLayout('${code}')">Add a rack</button></div>
+    <button class="big" onclick="saveLayout('${code}')">Save layout</button>
+    ${l.layout ? `<button class="ghost" style="width:100%;margin-top:10px" onclick="clearLayout('${code}')">Remove layout (plain shelf)</button>` : ''}`;
+}
+async function saveLayout(code){ try { await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({kind:'fridge', layout: window.__lay})}); toast('Layout saved.'); location.hash = '#/location/' + code; } catch (e) { toast(e.message); } }
+async function clearLayout(code){ const ok = await choose('Remove the rack layout?', [{label:'Remove it', sub:'Bottles stay in this place; slot positions are cleared.', value:true}]); if (!ok) return; await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({layout: null})}); location.hash = '#/location/' + code; }
+
+// ---------- Location ----------
+async function locationPage(code, mode, arg){
+  const l = await api('location/' + code);
+  const placing = mode === 'place' && arg;
+  const highlight = mode === 'find' && arg;
+  topbar(placing ? 'Tap the slot' : l.name, {back: placing ? '#/bottle/' + arg : '#/cellar', noGear:true});
   const groups = {}; l.bottles.forEach(c => { (groups[c.label] = groups[c.label] || {...c, count:0}).count++; });
-  view.innerHTML = `<p class="sub">${l.bottles.length} bottle${l.bottles.length===1?'':'s'} · ${esc(code)}</p>
+  let fridge = '';
+  if (l.layout) { placingCode = placing || null; fridge = renderFridge(l, {highlightCode: highlight, placing: !!placing, onSlot: 'slotTapped'}); }
+  const unplaced = l.layout ? l.bottles.filter(b => !b.slot) : [];
+  view.innerHTML = `
+    ${placing ? `<div class="banner" style="background:var(--wine)"><div>Where does it sit?<div class="sub" style="color:#fff;opacity:.9">Tap a slot. Front row is the larger circles.</div></div><button onclick="slotTapped('')">Just this rack area</button></div>` : ''}
+    ${fridge}
+    ${placing ? '' : `<p class="sub">${l.bottles.length} bottle${l.bottles.length===1?'':'s'}${l.capacity ? ` of ${l.capacity}` : ''} · ${esc(code)}</p>
     <div class="grid2"><button class="ghost" onclick="putHere('${esc(code)}')">Put bottles here (scan)</button>${l.bottles.length ? `<button class="ghost" onclick="printLabels(${JSON.stringify(l.bottles.map(b=>b.code))})">Print ${l.bottles.length} labels</button>` : '<span></span>'}</div>
-    ${Object.values(groups).map(bottleRow).join('') || '<div class="card empty">Empty. Scan bottles into this place or move them here.</div>'}`;
+    <button class="ghost" style="width:100%;margin-top:10px" onclick="editLayout('${esc(code)}')">${l.layout ? 'Edit rack layout' : 'Set up as a wine fridge (racks and slots)'}</button>
+    ${unplaced.length ? `<h2>Slot not recorded <span class="sub">${unplaced.length}</span></h2>${unplaced.map(b => `<div class="card tap" onclick="placeInFridge('${esc(b.code)}','${esc(code)}')"><div class="row"><div class="col"><div class="title">${esc(b.label)}</div><div class="sub">Tap to place it on the racks</div></div>${badge(b.status)}</div></div>`).join('')}` : ''}
+    <h2>Bottles</h2>
+    ${Object.values(groups).map(bottleRow).join('') || '<div class="card empty">Empty. Scan bottles into this place or move them here.</div>'}`}`;
+  if (l.layout) openDoor(placing || highlight ? 200 : 450);
 }
 function putHere(code){ sessionStorage.setItem('moveTo', code); sessionStorage.setItem('moveCount', '0'); location.hash = '#/scan'; }
 function endMove(){ sessionStorage.removeItem('moveTo'); sessionStorage.removeItem('moveCount'); route(); }
@@ -745,7 +845,7 @@ async function route(){
     else if (page === 'cellar') await cellar();
     else if (page === 'add') addForm();
     else if (page === 'bottle' && arg) await bottle(arg.toUpperCase());
-    else if (page === 'location' && arg) await locationPage(arg.toUpperCase());
+    else if (page === 'location' && arg) { const parts = location.hash.split('/'); await locationPage(arg.toUpperCase(), parts[3], parts[4] ? parts[4].toUpperCase() : null); }
     else if (page === 'settings') await settings();
     else if (page === 'edit' && arg) await editForm(arg.toUpperCase());
     else if (page === 'held') await heldPage();
