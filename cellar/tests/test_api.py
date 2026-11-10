@@ -271,7 +271,9 @@ def test_map_and_region_apply():
     with TestClient(app) as client:
         r = client.post("/api/bottles", json={"producer": "MapTest Winery", "quantity": 2}).json()
         m = client.get("/api/map").json()
-        assert any(u["label"].startswith("MapTest") for u in m["unplaced"])
+        assert any(u["label"].startswith("MapTest") and u["count"] == 2 for u in m["unplaced"])
+        tot = m["totals"]
+        assert tot["on_map"] + tot["to_verify"] == tot["bottles"]
         wine_id = client.get(f"/api/bottle/{r['codes'][0]}").json()["wine_id"]
         assert client.post("/api/regions/apply", json={"items": [{"id": wine_id, "region": "Paso Robles", "country": "USA"}]}).json()["updated"] == 1
         m2 = client.get("/api/map").json()

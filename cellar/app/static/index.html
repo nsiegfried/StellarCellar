@@ -96,6 +96,14 @@ nav a.scan svg{stroke:#fff}
 .worldmap .pin{stroke:#fff;stroke-width:3;cursor:pointer}
 .worldmap .pin.focus{stroke:var(--gold);stroke-width:6}
 .worldmap .halo{fill:none;stroke:var(--gold);stroke-width:4;opacity:.7}
+.detailmap{width:100%;display:block;border-radius:16px;background:var(--card);border:1px solid var(--line)}
+.detailmap .parent{fill:#efe6d6;stroke:#b9a989;stroke-width:1.5}
+.detailmap .sub{fill:#f7f1e6;stroke:#b9a989;stroke-width:1;cursor:pointer}
+.detailmap .sub.own{fill:#e8c9cf}
+.detailmap .sub.hit{fill:var(--wine);fill-opacity:.85;stroke:var(--gold);stroke-width:2.5}
+.detailmap text{font-size:11px;fill:#5a4a3a;pointer-events:none;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:3px}
+.detailmap text.hit{fill:#fff;stroke:var(--wine)}
+@media(prefers-color-scheme:dark){.detailmap .parent{fill:#3a322c;stroke:#6a5a48}.detailmap .sub{fill:#2e2824;stroke:#6a5a48}.detailmap .sub.own{fill:#5a3440}.detailmap text{fill:#e9dccb;stroke:#1a1614}}
 .mapchips{display:flex;gap:8px;overflow-x:auto;margin:10px 0 4px;padding-bottom:4px}
 .mapchips .chip{white-space:nowrap}
 #toast{position:fixed;left:14px;right:14px;bottom:calc(var(--nav-h) + 14px + env(safe-area-inset-bottom));background:var(--ink);color:var(--bg);padding:14px;border-radius:14px;display:none;z-index:9;overflow:hidden}
@@ -185,7 +193,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.15.2';
+const APP_VERSION = '0.16.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -398,7 +406,7 @@ function addForm(){
     <label>Wine name</label><input id="name" placeholder="Cuvée or vineyard">
     <div class="grid2"><div><label>Vintage</label><input id="vintage" type="number" placeholder="${y-3}"></div>
       <div><label>Color</label><select id="color"><option value="red">Red</option><option value="white">White</option><option value="rose">Rosé</option><option value="sparkling">Sparkling</option><option value="dessert">Dessert</option><option value="fortified">Fortified</option></select></div></div>
-    <label>Region</label><input id="region" placeholder="Napa Valley">
+    <div class="grid2"><div><label>Region</label><input id="region" placeholder="Napa Valley"></div><div><label>Country</label><input id="country" placeholder="USA"></div></div>
     <div class="grid2"><div><label>How many</label><input id="qty" type="number" value="1" min="1" max="24"></div>
       <div><label>Price paid (each)</label><input id="price" type="number" step="0.01"></div></div>
     <div class="grid2"><div><label>Drink from (year)</label><input id="from" type="number"></div><div><label>Drink until (year)</label><input id="to" type="number"></div></div>
@@ -430,6 +438,7 @@ async function scanLabelFile(file){
   try {
     const d = await readLabel(file, 'scanMsg');
     producer.value = d.producer; name.value = d.name; region.value = d.region; color.value = d.color;
+    document.getElementById('country').value = d.country || '';
     document.getElementById('vintage').value = d.vintage ?? '';
     document.getElementById('from').value = d.drink_from ?? ''; document.getElementById('to').value = d.drink_to ?? '';
     const bits = [`Read with ${d.confidence} confidence. Check the fields, then Save.`];
@@ -443,7 +452,7 @@ const num = id => { const v = document.getElementById(id).value; return v === ''
 async function saveBottles(){
   const btn = document.getElementById('saveBtn'); if (btn.disabled) return;
   btn.disabled = true; btn.textContent = 'Saving…';
-  const body = {producer: producer.value, name: name.value, vintage: num('vintage'), color: color.value, region: region.value,
+  const body = {producer: producer.value, name: name.value, vintage: num('vintage'), color: color.value, region: region.value, country: document.getElementById('country').value,
     quantity: num('qty') || 1, purchase_price: num('price'), drink_from: num('from'), drink_to: num('to'),
     location_code: document.getElementById('loc').value || null, special_occasion: special.checked};
   try {
@@ -799,6 +808,55 @@ function mapSvg(d, pins, view, focus){
     return `${f ? `<circle class="halo" cx="${x}" cy="${y}" r="${r * 2}"/>` : ''}<circle class="pin ${f ? 'focus' : ''}" cx="${x}" cy="${y}" r="${r}" fill="${pinColor(p.colors)}" style="stroke-width:${3 * Math.max(k, .12)}" onclick="pinSheet(${i})"><title>${esc(p.name)}: ${p.count}</title></circle>`; }).join('');
   return `<svg class="worldmap" viewBox="${vx} ${vy} ${vw} ${vh}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Map of where your wines come from"><path class="land" d="${d}" style="stroke-width:${1.2 * k}"/>${dots}</svg>`;
 }
+let DETAIL = null;
+async function detailMaps(){ if (!DETAIL) DETAIL = await (await fetch('static/detail-maps.json')).json(); return DETAIL; }
+const norm = s => (s || '').toLowerCase().replace(/ district| of napa valley| of russian river valley| sonoma county/g, '').replace(/^mt\./, 'mount').replace(/^los /, '').trim();
+const DETAIL_KEYS = {
+  napa: ['napa','oakville','rutherford','stags leap','howell mountain','spring mountain','mount veeder','mt. veeder','calistoga','st. helena','yountville','coombsville','atlas peak','diamond mountain','oak knoll','chiles valley'],
+  sonoma: ['sonoma','russian river','alexander valley','dry creek','knights valley','chalk hill','rockpile','fort ross','bennett valley','petaluma gap','moon mountain','green valley','fountaingrove'],
+  paso: ['paso robles','adelaida','templeton gap','willow creek','el pomar','creston','san miguel','san juan creek','santa margarita ranch','estrella','geneseo'],
+  mendoza: ['mendoza','uco','luján','lujan','maipú','maipu','tupungato','tunuyán','tunuyan','san carlos','gualtallary','altamira','vista flores','agrelo','perdriel'],
+};
+function detailFor(region){
+  const r = (region || '').toLowerCase();
+  if (!r) return null;
+  if (r.includes('carneros')) return r.includes('sonoma') ? 'sonoma' : 'napa';
+  for (const [k, words] of Object.entries(DETAIL_KEYS)) if (words.some(w => r.includes(w))) return k;
+  return null;
+}
+function subMatch(subName, region){
+  const r = norm(region), s = norm(subName);
+  return !!r && (r === s || r.startsWith(s + ',') || r.includes(s) && s.length > 4);
+}
+// Mendoza: schematic positions of the main sub-regions (approximate centres; boundaries to come).
+const MENDOZA = [
+  ['Mendoza city', -32.89, -68.83, true], ['Luján de Cuyo', -33.04, -68.88], ['Maipú', -32.98, -68.75], ['Agrelo', -33.12, -68.90],
+  ['Tupungato', -33.37, -69.15], ['Gualtallary', -33.37, -69.25], ['Tunuyán', -33.58, -69.02], ['Vista Flores', -33.65, -69.15],
+  ['San Carlos', -33.77, -69.05], ['Altamira', -33.78, -69.13], ['East Mendoza (San Martín)', -33.08, -68.47], ['San Rafael', -34.61, -68.33],
+];
+function mendozaSvg(region, owned){
+  const W = 600, H = 700, la0 = -32.6, la1 = -34.9, lo0 = -69.7, lo1 = -68.1;
+  const P = (la, lo) => [24 + (lo - lo0) / (lo1 - lo0) * (W - 48), 24 + (la - la0) / (la1 - la0) * (H - 48)];
+  const andes = [[-32.6,-69.55],[-33.0,-69.5],[-33.4,-69.6],[-33.8,-69.62],[-34.2,-69.7],[-34.9,-69.85]].map(([a,b]) => P(a,b).join(',')).join(' ');
+  const uco = [[-33.25,-69.35],[-33.25,-68.95],[-33.95,-68.9],[-33.95,-69.3]].map(([a,b]) => P(a,b).join(',')).join(' ');
+  const dots = MENDOZA.map(([n, la, lo, city]) => { const [x, y] = P(la, lo); const hit = subMatch(n, region) || (n === 'Mendoza city' && false); const own = owned[n];
+    return `<circle cx="${x}" cy="${y}" r="${city ? 5 : hit ? 13 : own ? 10 : 7}" fill="${city ? '#555' : hit ? 'var(--wine)' : own ? '#c9939d' : '#d8cbb5'}" stroke="${hit ? 'var(--gold)' : '#fff'}" stroke-width="${hit ? 3 : 2}"/><text x="${x + 14}" y="${y + 4}" class="${hit ? '' : ''}">${esc(n)}${own ? ' · ' + own : ''}</text>`; }).join('');
+  return `<svg class="detailmap" viewBox="0 0 ${W} ${H}" role="img" aria-label="Mendoza wine sub-regions"><polygon points="${uco}" fill="#efe6d6" stroke="#b9a989" stroke-dasharray="6 5"/><text x="${P(-33.27,-69.33)[0]}" y="${P(-33.27,-69.33)[1] - 6}">Uco Valley</text><polyline points="${andes}" fill="none" stroke="#9b8f80" stroke-width="5" stroke-linecap="round" opacity=".6"/><text x="${P(-34.4,-69.66)[0] - 10}" y="${P(-34.4,-69.66)[1]}">Andes</text>${dots}</svg><p class="sub" style="margin:6px 2px 0">Sub-region positions are approximate; boundaries for Mendoza aren't drawn yet.</p>`;
+}
+function detailSvg(map, region, owned){
+  const hitName = (map.subs.find(s => subMatch(s.name, region)) || {}).name;
+  const order = [...map.subs].sort((a, b) => (a.name === hitName) - (b.name === hitName));
+  return `<svg class="detailmap" viewBox="0 0 ${map.w} ${map.h}" role="img" aria-label="${esc(map.title)} sub-regions">
+    ${map.parent ? `<path class="parent" d="${map.parent}"/>` : ''}
+    ${order.map(s => `<path class="sub ${s.name === hitName ? 'hit' : owned[s.name] ? 'own' : ''}" d="${s.d}" onclick="subSheet('${esc(s.name).replace(/'/g, "\\'")}')"><title>${esc(s.name)}</title></path>`).join('')}
+    ${order.filter(s => s.name === hitName || owned[s.name]).map(s => `<text x="${s.c[0]}" y="${s.c[1]}" text-anchor="middle" class="${s.name === hitName ? 'hit' : ''}">${esc(s.name.replace(/ District| of Napa Valley| of Russian River Valley| Sonoma County/, ''))}${owned[s.name] ? ' · ' + owned[s.name] : ''}</text>`).join('')}
+  </svg>${hitName ? '' : `<p class="sub" style="margin:6px 2px 0">This wine is labeled ${esc(region)}, which covers the whole area shown.</p>`}`;
+}
+function subSheet(name){
+  const list = (MAPDATA ? MAPDATA.pins : []).flatMap(p => p.bottles).filter(b => subMatch(name, b.region));
+  const groups = {}; list.forEach(b => { (groups[b.label] = groups[b.label] || {...b, count:0}).count++; });
+  openSheet(`<h3>${esc(name)}</h3>${Object.values(groups).map(b => `<button class="opt" onclick="closeSheet();location.hash='#/bottle/${esc(b.code)}'">${esc(b.label)}${b.count > 1 ? ' ×' + b.count : ''}<small>${esc(b.location)}${b.incoming ? ' · on order' : ''}${b.reserved_for ? ' · held for ' + esc(b.reserved_for) : ''}</small></button>`).join('') || '<p class="sub">No bottles from here yet.</p>'}<button class="ghost" style="width:100%;border:0" onclick="closeSheet()">Close</button>`);
+}
 let MAPDATA = null;
 async function mapPage(focusArg){
   const [d, m] = await Promise.all([worldPath(), api('map')]);
@@ -814,22 +872,33 @@ async function mapPage(focusArg){
   topbar(focusArg ? 'Where it\'s from' : 'Your wines around the world', {back: focusArg ? null : '#/cellar', noGear: true});
   if (focusArg) document.getElementById('top').innerHTML = `<button class="tbtn" onclick="history.back()">‹ Back</button><div class="ttl">Where it's from</div><span class="spacer"></span>`;
   const total = m.pins.reduce((a, p) => a + p.count, 0);
+  let detailHtml = '';
+  if (focusArg) {
+    const region = decodeURIComponent(focusArg).split('|')[0];
+    const key = detailFor(region);
+    if (key) {
+      const owned = {};
+      const allB = m.pins.flatMap(p => p.bottles);
+      if (key === 'mendoza') { MENDOZA.forEach(([n]) => { const c = allB.filter(b => subMatch(n, b.region)).length; if (c) owned[n] = c; }); detailHtml = mendozaSvg(region, owned); }
+      else { const dm = (await detailMaps())[key]; dm.subs.forEach(s => { const c = allB.filter(b => subMatch(s.name, b.region)).length; if (c) owned[s.name] = c; }); detailHtml = detailSvg(dm, region, owned); }
+    }
+  }
   const area = document.getElementById('view');
   area.innerHTML = `
-    ${focusArg ? `<div class="card"><div class="title" style="font-size:var(--fs-title)">${esc(focus || 'Unknown')}</div>${about.country && about.country !== focus ? `<div class="sub">${esc(about.country)}</div>` : ''}${about.about ? `<p style="margin:8px 0 0">${esc(about.about)}</p>` : about.lat == null ? '<p class="sub" style="margin:8px 0 0">This region isn\'t on the map yet. Add it under Edit details, or use Find regions on the full map.</p>' : ''}</div>` : `<p class="sub">${total} bottle${total === 1 ? '' : 's'} from ${m.pins.length} place${m.pins.length === 1 ? '' : 's'}. Tap a pin or a place below.</p>`}
+    ${focusArg ? `<div class="card"><div class="title" style="font-size:var(--fs-title)">${esc(focus || 'Unknown')}</div>${about.country && about.country !== focus ? `<div class="sub">${esc(about.country)}</div>` : ''}${about.about ? `<p style="margin:8px 0 0">${esc(about.about)}</p>` : about.lat == null ? '<p class="sub" style="margin:8px 0 0">This region isn\'t on the map yet. Add it under Edit details, or use Find regions on the full map.</p>' : ''}</div>` : `<div class="summary" style="margin-bottom:6px"><div class="card"><div class="n">${m.totals.bottles}</div><div class="sub">bottles</div></div><div class="card"><div class="n">${m.totals.on_map}</div><div class="sub">on the map</div></div><div class="card tap" onclick="document.getElementById('verify')?.scrollIntoView({behavior:'smooth'})"><div class="n">${m.totals.to_verify}</div><div class="sub">region to verify ›</div></div></div><p class="sub">Counts include ${m.totals.held} held for someone and ${m.totals.incoming} on order. Tap a pin or a place below.</p>`}
     ${focusArg ? '' : `<div class="mapchips">${[['world','World'],['americas','Americas'],['europe','Europe'],['south','Southern hemisphere']].map(([k, l]) => `<button class="chip ${k === 'world' ? 'on' : ''}" onclick="setMapView('${k}', this)">${l}</button>`).join('')}</div>`}
-    <div id="mapbox">${mapSvg(d, m.pins, mapView, focus)}</div>
+    ${detailHtml ? `<div id="detailbox">${detailHtml}</div><p class="sub" style="margin:8px 2px">Highlighted: where this wine is from. Tinted: other places you have bottles from. Tap any area to see them.</p><details style="margin-top:6px"><summary class="sub" style="cursor:pointer">Show on the world map</summary><div id="mapbox" style="margin-top:8px">${mapSvg(d, m.pins, mapView, focus)}</div></details>` : `<div id="mapbox">${mapSvg(d, m.pins, mapView, focus)}</div>`}
     ${focusArg ? `<button class="ghost" style="width:100%;margin-top:12px" onclick="location.hash='#/map'">See your whole cellar on the map</button>` : `
       <h2>Places <span class="sub">${m.pins.length}</span></h2>
-      ${m.pins.map((p, i) => `<div class="card tap row" onclick="pinSheet(${i})"><div class="col"><div class="title">${esc(p.name)}</div><div class="sub">${p.country && p.country !== p.name ? esc(p.country) + ' · ' : ''}${p.count} bottle${p.count === 1 ? '' : 's'}${p.precision === 'country' ? ' · country only' : ''}</div></div><span class="sub">›</span></div>`).join('') || '<div class="card empty">No wines placed on the map yet.</div>'}
-      ${m.unplaced.length ? `<h2>Not on the map yet <span class="sub">${m.unplaced.length}</span></h2><div class="card"><p class="sub" style="margin-top:0">These wines have no region recorded. Claude can suggest regions from the producer names for you to check.</p><button class="big" onclick="location.hash='#/regions'">Find regions for ${m.unplaced.length} wine${m.unplaced.length === 1 ? '' : 's'}</button></div>` : ''}`}`;
+      ${m.pins.map((p, i) => `<div class="card tap row" onclick="pinSheet(${i})"><div class="col"><div class="title">${esc(p.name)}</div><div class="sub">${p.country && p.country !== p.name ? esc(p.country) + ' · ' : ''}${p.count} bottle${p.count === 1 ? '' : 's'}${p.held ? ` · ${p.held} held` : ''}${p.incoming ? ` · ${p.incoming} on order` : ''}${p.precision === 'country' ? ' · country only' : ''}</div></div><span class="sub">›</span></div>`).join('') || '<div class="card empty">No wines placed on the map yet.</div>'}
+      ${m.unplaced.length ? `<h2 id="verify">Region to verify <span class="sub">${m.totals.to_verify} bottles, ${m.unplaced.length} wines</span></h2><div class="card"><p class="sub" style="margin-top:0">No region on record yet. New bottles get theirs from the label; for these, Claude can suggest one for you to check.</p><button class="big" onclick="location.hash='#/regions'">Find regions for ${m.unplaced.length} wine${m.unplaced.length === 1 ? '' : 's'}</button></div>${m.unplaced.map(u => `<div class="card tap row" onclick="location.hash='#/bottle/${esc(u.code)}'"><div class="title">${esc(u.label)}${u.count > 1 ? ` <span class="sub">×${u.count}</span>` : ''}</div><span class="sub">›</span></div>`).join('')}` : ''}`}`;
 }
 function setMapView(k, el){ el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); el.classList.add('on'); worldPath().then(d => { document.getElementById('mapbox').innerHTML = mapSvg(d, MAPDATA.pins, VIEWS[k], null); }); }
 function pinSheet(i){
   const p = MAPDATA.pins[i]; if (!p) return;
   const groups = {}; p.bottles.forEach(b => { (groups[b.label] = groups[b.label] || {...b, count:0}).count++; });
   openSheet(`<h3>${esc(p.name)}${p.country && p.country !== p.name ? ' · ' + esc(p.country) : ''}</h3>
-    ${Object.values(groups).map(b => `<button class="opt" onclick="closeSheet();location.hash='#/bottle/${esc(b.code)}'">${esc(b.label)}${b.count > 1 ? ' ×' + b.count : ''}<small>${esc(b.location)}${b.score != null ? ' · ' + b.score : ''} · ${STATUS[b.status] || ''}</small></button>`).join('') || '<p class="sub">No bottles in the cellar from here.</p>'}
+    ${Object.values(groups).map(b => `<button class="opt" onclick="closeSheet();location.hash='#/bottle/${esc(b.code)}'">${esc(b.label)}${b.count > 1 ? ' ×' + b.count : ''}<small>${esc(b.location)}${b.incoming ? ' · on order' : ''}${b.reserved_for ? ' · held for ' + esc(b.reserved_for) : ''}${b.score != null ? ' · ' + b.score : ''}</small></button>`).join('') || '<p class="sub">No bottles in the cellar from here.</p>'}
     <button class="ghost" style="width:100%" onclick="closeSheet();location.hash='#/map/r/${encodeURIComponent(p.name + '|' + (p.country || ''))}'">About ${esc(p.name)}</button>
     <button class="ghost" style="width:100%;margin-top:8px;border:0" onclick="closeSheet()">Close</button>`);
 }

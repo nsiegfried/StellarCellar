@@ -886,26 +886,32 @@ def import_wine_profile(body: ImportBody, session: Session = Depends(get_session
 @app.get("/api/map")
 def cellar_map(session: Session = Depends(get_session)):
     """Pins for every place the cellar's wines come from, plus wines we can't place yet."""
-    pins, unplaced = {}, []
-    for b in in_cellar(session):
+    pins, unplaced = {}, {}
+    bottles = session.exec(select(Bottle).where(Bottle.status.in_(["in_cellar", "incoming"]))).all()
+    held = incoming = 0
+    for b in bottles:
         wine = session.get(Wine, b.wine_id)
         lat, lon, precision = regions.locate(wine.region, wine.country)
-        c = candidate(session, b)
+        c = {**candidate(session, b), "incoming": b.status == "incoming", "region": wine.region, "country": wine.country}
+        held += 1 if b.reserved_for else 0
+        incoming += 1 if b.status == "incoming" else 0
         if lat is None:
-            unplaced.append({"wine_id": wine.id, "label": c["label"]})
+            u = unplaced.setdefault(wine.id, {"wine_id": wine.id, "label": c["label"], "count": 0, "code": b.code})
+            u["count"] += 1
             continue
         key = (wine.region or wine.country or "").strip() or "Unknown"
-        p = pins.setdefault(key, {"name": key, "country": wine.country, "lat": lat, "lon": lon,
-                                  "precision": precision, "count": 0, "colors": {}, "bottles": []})
+        p = pins.setdefault(key, {"name": key, "country": wine.country, "lat": lat, "lon": lon, "precision": precision,
+                                  "count": 0, "held": 0, "incoming": 0, "colors": {}, "bottles": []})
         p["count"] += 1
+        p["held"] += 1 if b.reserved_for else 0
+        p["incoming"] += 1 if b.status == "incoming" else 0
         p["colors"][wine.color] = p["colors"].get(wine.color, 0) + 1
         p["bottles"].append(c)
-    seen, ul = set(), []
-    for u in unplaced:
-        if u["wine_id"] not in seen:
-            seen.add(u["wine_id"])
-            ul.append(u)
-    return {"pins": sorted(pins.values(), key=lambda p: -p["count"]), "unplaced": ul}
+    on_map = sum(p["count"] for p in pins.values())
+    to_verify = sum(u["count"] for u in unplaced.values())
+    return {"pins": sorted(pins.values(), key=lambda p: -p["count"]), "unplaced": list(unplaced.values()),
+            "totals": {"bottles": len(bottles), "on_map": on_map, "to_verify": to_verify,
+                       "held": held, "incoming": incoming}}
 
 
 @app.post("/api/regions/suggest")
@@ -913,7 +919,7 @@ def regions_suggest(session: Session = Depends(get_session)):
     """Ask Claude for region and country of wines that have no region yet. Nothing is saved here."""
     wines = session.exec(select(Wine)).all()
     todo = [w for w in wines if not (w.region or "").strip()
-            and session.exec(select(Bottle).where(Bottle.wine_id == w.id, Bottle.status == "in_cellar")).first()]
+            and session.exec(select(Bottle).where(Bottle.wine_id == w.id, Bottle.status.in_(["in_cellar", "incoming"]))).first()]
     if not todo:
         return {"suggestions": []}
     out, err = ai.suggest_regions([{"id": w.id, "label": wine_label(w)} for w in todo])
