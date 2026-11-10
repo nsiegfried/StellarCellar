@@ -149,7 +149,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.13.0';
+const APP_VERSION = '0.13.1';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
@@ -361,7 +361,7 @@ function addForm(){
   Promise.all([api('locations'), api('settings')]).then(([ls, st]) => {
     const loc = document.getElementById('loc'); loc.innerHTML = '';
     ls.forEach(l => loc.add(new Option(l.holding ? l.name + ' (holding place)' : l.name, l.code)));
-    loc.value = st.default_location_code;
+    loc.value = sessionStorage.getItem('addTo') || st.default_location_code; sessionStorage.removeItem('addTo');
   });
   if (pendingLabelFile) { const f = pendingLabelFile; pendingLabelFile = null; scanLabelFile(f); }
 }
@@ -597,7 +597,7 @@ async function slotTapped(slot){
   const [, , locCode] = location.hash.split('/');
   try {
     const r = await api(`bottle/${placingCode}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot})});
-    toast(`Placed at ${r.slot} in ${r.location}.`); const code = placingCode; placingCode = null; location.hash = '#/bottle/' + code;
+    toast(`Placed ${r.slot ? 'at ' + r.slot + ' ' : ''}in ${r.location}.`); const code = placingCode; placingCode = null; location.hash = sessionStorage.getItem('pickReturn') ? '#/location/' + locCode + '/pick' : '#/bottle/' + code; sessionStorage.removeItem('pickReturn');
   } catch (e) { toast(e.message); }
 }
 
@@ -641,11 +641,15 @@ function countMyFridge(code){
   for (let i = 0; i < lo; i++) racks.push({name: String.fromCharCode(65+n++), across:a, deep:d, zone: u ? 1 : 0});
   window.__lay = {order:'top_down', zones: u && lo ? ['Upper','Lower'] : [], racks}; window.__layFor = code; editLayout(code);
 }
-async function saveLayout(code){ try { await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({kind:'fridge', layout: window.__lay})}); window.__lay = null; toast('Layout saved.'); location.hash = '#/location/' + code; } catch (e) { toast(e.message); } }
-async function clearLayout(code){ const ok = await choose('Remove the rack layout?', [{label:'Remove it', sub:'Bottles stay in this place; slot positions are cleared.', value:true}]); if (!ok) return; await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({layout: null})}); location.hash = '#/location/' + code; }
+function go(hash){ if (location.hash === hash) route(); else location.hash = hash; }
+async function saveLayout(code){ try { const r = await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({kind:'fridge', layout: window.__lay})}); window.__lay = null; toast(`Layout saved: ${r.capacity} bottles.`); go('#/location/' + code); } catch (e) { toast(e.message); } }
+async function clearLayout(code){ const ok = await choose('Remove the rack layout?', [{label:'Remove it', sub:'Bottles stay in this place; slot positions are cleared.', value:true}]); if (!ok) return; await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({layout: null})}); window.__lay = null; go('#/location/' + code); }
 
 // ---------- Location ----------
 async function locationPage(code, mode, arg){
+  if (mode === 'layout') return editLayout(code);
+  if (mode === 'pick') return pickPage(code);
+  sessionStorage.removeItem('pickReturn');
   const l = await api('location/' + code);
   const placing = mode === 'place' && arg;
   const highlight = mode === 'find' && arg;
@@ -658,13 +662,33 @@ async function locationPage(code, mode, arg){
     ${placing ? `<div class="banner" style="background:var(--wine)"><div>Where does it sit?<div class="sub" style="color:#fff;opacity:.9">Tap a slot. Front row is the larger circles.</div></div><button onclick="slotTapped('')">Just this rack area</button></div>` : ''}
     ${fridge}
     ${placing ? '' : `<p class="sub">${l.bottles.length} bottle${l.bottles.length===1?'':'s'}${l.capacity ? ` of ${l.capacity}` : ''} · ${esc(code)}</p>
-    <div class="grid2"><button class="ghost" onclick="putHere('${esc(code)}')">Put bottles here (scan)</button>${l.bottles.length ? `<button class="ghost" onclick="printLabels(${JSON.stringify(l.bottles.map(b=>b.code))})">Print ${l.bottles.length} labels</button>` : '<span></span>'}</div>
-    <button class="ghost" style="width:100%;margin-top:10px" onclick="editLayout('${esc(code)}')">${l.layout ? 'Edit rack layout' : 'Set up as a wine fridge (racks and slots)'}</button>
+    <button class="big" onclick="addWineHere('${esc(code)}')">Add wine to ${esc(l.name)}</button>
+    <div class="grid2" style="margin-top:10px"><button class="ghost" onclick="putHere('${esc(code)}')">Scan bottles in</button>${l.bottles.length ? `<button class="ghost" onclick="printLabels(${JSON.stringify(l.bottles.map(b=>b.code))})">Print ${l.bottles.length} labels</button>` : '<span></span>'}</div>
+    <button class="ghost" style="width:100%;margin-top:10px" onclick="location.hash='#/location/${esc(code)}/layout'">${l.layout ? 'Edit rack layout' : 'Set up as a wine fridge (racks and slots)'}</button>
     ${unplaced.length ? `<h2>Slot not recorded <span class="sub">${unplaced.length}</span></h2>${unplaced.map(b => `<div class="card tap" onclick="placeInFridge('${esc(b.code)}','${esc(code)}')"><div class="row"><div class="col"><div class="title">${esc(b.label)}</div><div class="sub">Tap to place it on the racks</div></div>${badge(b.status)}</div></div>`).join('')}` : ''}
     <h2>Bottles</h2>
     ${Object.values(groups).map(bottleRow).join('') || '<div class="card empty">Empty. Scan bottles into this place or move them here.</div>'}`}`;
   if (l.layout) openDoor(placing || highlight ? 200 : 450);
 }
+async function addWineHere(code){
+  const how = await choose('Add wine here', [
+    {label:'Scan bottles in', sub:'Scan each bottle label; it lands here as you go', value:'scan'},
+    {label:'Pick from another place', sub:'Choose bottles already in the cellar, like New arrivals', value:'pick'},
+    {label:'Add a new bottle', sub:'Photograph the label of a bottle not yet in the app', value:'new'}]);
+  if (how === 'scan') putHere(code);
+  else if (how === 'pick') location.hash = '#/location/' + code + '/pick';
+  else if (how === 'new') { sessionStorage.setItem('addTo', code); location.hash = '#/add'; }
+}
+async function pickPage(code){
+  sessionStorage.setItem('pickReturn', '1');
+  const [l, all] = await Promise.all([api('location/' + code), api('bottles')]);
+  const elsewhere = all.filter(b => b.location_code !== code);
+  topbar('Move into ' + l.name, {back:'#/location/' + code, noGear:true});
+  const groups = {}; elsewhere.forEach(b => { (groups[b.location] = groups[b.location] || []).push(b); });
+  view.innerHTML = `<p class="sub">Tap a bottle to move it here${l.layout ? ', then tap the slot it sits in' : ''}.</p>` +
+    (Object.entries(groups).map(([place, bs]) => `<h2>${esc(place)} <span class="sub">${bs.length}</span></h2>` + bs.map(b => `<div class="card tap" onclick="${l.layout ? `placeInFridge('${esc(b.code)}','${esc(code)}')` : `moveInto('${esc(b.code)}','${esc(code)}')`}"><div class="row"><div class="col"><div class="title">${esc(b.label)}</div><div class="meta">${b.price != null ? `<span>${money(b.price, CUR)}</span>` : ''}${b.score != null ? `<span><b>${b.score}</b></span>` : ''}</div></div>${badge(b.status)}</div></div>`).join('')).join('') || '<div class="card empty">Every bottle is already here.</div>');
+}
+async function moveInto(bottleCode, locCode){ const r = await api(`bottle/${bottleCode}/move`, {method:'POST', body: JSON.stringify({location_code: locCode})}); toast(`Moved to ${r.location}.`); go('#/location/' + locCode + '/pick'); }
 function putHere(code){ sessionStorage.setItem('moveTo', code); sessionStorage.setItem('moveCount', '0'); location.hash = '#/scan'; }
 function endMove(){ sessionStorage.removeItem('moveTo'); sessionStorage.removeItem('moveCount'); route(); }
 
