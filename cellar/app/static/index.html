@@ -122,6 +122,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(184,134,11,.0)}50%{box-shadow:0 0 18px 4px rgba(184,134,11,.55)}}
 .fridge .rack .lbl{position:absolute;left:-2px;top:-6px;background:#8a5a35;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:0 6px 6px 0}
 .fridge .slot{aspect-ratio:1;border-radius:50%;background:rgba(255,255,255,.07);border:1.5px dashed rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;min-width:0;position:relative}
+.fridge .slot.fizz{box-shadow:inset 0 0 0 2px rgba(255,255,255,.75),inset 0 0 0 4px rgba(201,162,39,.55)}
 .fridge .slot.filled{border:0;background:radial-gradient(circle at 35% 35%,#fff3 0,#0000 40%),var(--bc,#7b1e3a)}
 .fridge .slot.back{opacity:.72;transform:scale(.82)}
 .fridge .slot.hit{outline:3px solid var(--gold);outline-offset:3px;animation:glow 1.2s ease-in-out infinite;opacity:1;transform:none;z-index:2}
@@ -184,7 +185,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.15.1';
+const APP_VERSION = '0.15.2';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -632,6 +633,30 @@ async function saveEdit(code){
 
 // ---------- Fridge view ----------
 const COLOR = {red:'#7b1e3a', white:'#d9c270', rose:'#e0848f', sparkling:'#c9a227', dessert:'#b06a1c', fortified:'#5a2a4a'};
+// Shade each bottle by style: light garnet Pinot through inky Syrah; pale straw Sauvignon Blanc through gold Chardonnay.
+const SHADES = [
+  // [colour, keywords, hex, label]
+  ['red', ['pinot noir','pinot','gamay','beaujolais','bourgogne rouge','burgundy','nerello','gevrey','chambertin','vosne','chambolle','nuits-saint','pommard','volnay','williams selyem','occidental','kosta browne','sea smoke'], '#a8323e', 'Light red'],
+  ['red', ['grenache','garnacha','sangiovese','chianti','brunello','montalcino','nebbiolo','barolo','barbaresco','tempranillo','rioja','ribera','valpolicella','cinsault'], '#8c2335', 'Medium red'],
+  ['red', ['merlot','zinfandel','lytton','geyserville','cabernet franc','carmenere','carmenère','red blend','blend','gsm','table for four','pomerol','saint-emilion'], '#741b37', 'Medium-full red'],
+  ['red', ['cabernet','cask 23','bordeaux','pauillac','margaux','saint-julien','beychevelle','napa','meritage','opus'], '#561431', 'Full red'],
+  ['red', ['syrah','shiraz','malbec','petite sirah','petit verdot','mourvedre','mourvèdre','tannat','amarone','aglianico','touriga','sagrantino'], '#3d0c24', 'Inky red'],
+  ['white', ['sauvignon blanc','sancerre','pinot grigio','pinot gris','albarino','albariño','vinho verde','verdejo','picpoul','muscadet'], '#ece6ad', 'Pale white'],
+  ['white', ['riesling','chenin','vouvray','gruner','grüner','pinot blanc','gewurz','gewürz','torrontes','torrontés'], '#e5d58a', 'Straw white'],
+  ['white', ['chardonnay','viognier','meursault','montrachet','chablis','white burgundy','marsanne','roussanne','semillon','sémillon'], '#dcbc5e', 'Golden white'],
+  ['dessert', ['sauternes','tokaji','tokaj','ice wine','icewine','late harvest','moscato','beerenauslese'], '#c88c2c', 'Amber'],
+  ['fortified', ['port','porto','madeira','sherry','oloroso','tawny','marsala'], '#6b2d1d', 'Tawny'],
+];
+const DEFAULT_SHADE = {red:'#6a1a35', white:'#e2cf80', rose:'#eba3a8', sparkling:'#e6d48c', dessert:'#c88c2c', fortified:'#6b2d1d'};
+function shadeFor(b){
+  const text = ((b.label || '') + ' ' + (b.name || '')).toLowerCase();
+  if (b.color === 'sparkling' || /champagne|prosecco|cava|crémant|cremant|sparkling|brut/.test(text)) return /ros[eé]/.test(text) ? '#efb0aa' : '#e6d48c';
+  if (b.color === 'rose') return /provence|pale/.test(text) ? '#f2c0b8' : '#e99aa1';
+  for (const [col, words, hex] of SHADES) {
+    if ((col === b.color || (col === 'dessert' && b.color === 'white') || col === 'fortified') && words.some(w => text.includes(w))) return hex;
+  }
+  return DEFAULT_SHADE[b.color] || DEFAULT_SHADE.red;
+}
 function slotId(rack, i, d){ return `${rack}-${i}${d === 0 ? '' : 'ABC'[d]}`; }
 function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
   const lay = loc.layout; if (!lay) return '';
@@ -650,7 +675,7 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
     const isHit = hitRack === r.name;
     if (r.bulk) {
       const here = loc.bottles.filter(b => b.slot === r.name);
-      const pile = here.map(b => `<div class="slot filled ${hitBottle && b.code === hitBottle.code ? 'hit' : ''} tap" style="--bc:${COLOR[b.color] || COLOR.red}" title="${esc(b.label)}" aria-label="${esc(b.label)}" onclick="location.hash='#/bottle/${esc(b.code)}'">${b.score >= 90 ? '<span class="star">★</span>' : ''}</div>`).join('');
+      const pile = here.map(b => `<div class="slot filled ${hitBottle && b.code === hitBottle.code ? 'hit' : ''} tap" style="--bc:${shadeFor(b)}" title="${esc(b.label)}" aria-label="${esc(b.label)}" onclick="location.hash='#/bottle/${esc(b.code)}'">${b.score >= 90 ? '<span class="star">★</span>' : ''}</div>`).join('');
       const empty = Array.from({length: Math.min(Math.max(0, r.across - here.length), 30)}, () => `<div class="slot ${placing ? 'tap' : ''}" ${placing ? `onclick="${onSlot}('${r.name}')"` : ''} aria-label="Empty spot, rack ${esc(r.name)}"></div>`).join('');
       return zoneHdr + `<div class="rack bulk ${isHit ? 'hit' : ''}" data-rack="${esc(r.name)}"><span class="lbl">${esc(r.name)} · bulk</span><div class="pile">${pile}${empty}</div></div>`;
     }
@@ -660,7 +685,7 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
       for (let d = r.deep - 1; d >= 0; d--) {
         const id = slotId(r.name, i, d), b = byslot[id];
         const hit = hitBottle && b && b.code === hitBottle.code;
-        layers.push(`<div class="slot d${d} ${b ? 'filled' : ''} ${hit ? 'hit' : ''}" style="${b ? `--bc:${COLOR[b.color] || COLOR.red}` : ''}">${b && b.score >= 90 && d === 0 ? '<span class="star">★</span>' : ''}</div>`);
+        layers.push(`<div class="slot d${d} ${b ? 'filled' : ''} ${b && (b.color === 'sparkling') ? 'fizz' : ''} ${hit ? 'hit' : ''}" style="${b ? `--bc:${shadeFor(b)}` : ''}">${b && b.score >= 90 && d === 0 ? '<span class="star">★</span>' : ''}</div>`);
       }
       const names = [];
       for (let d = 0; d < r.deep; d++) { const b = byslot[slotId(r.name, i, d)]; names.push(b ? b.label : 'empty'); }
@@ -673,7 +698,8 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
   const hintSeen = Number(localStorage.getItem('sc_fridge_hint') || 0);
   if (!placing && hintSeen < 3) localStorage.setItem('sc_fridge_hint', hintSeen + 1);
   const hint = !placing && hintSeen < 3 ? '<p class="sub" style="text-align:center;margin:-2px 0 8px">Tap a bottle for details, or an empty spot to add one.</p>' : '';
-  return `<div class="legend"><span><i style="background:${COLOR.red}"></i>Red</span><span><i style="background:${COLOR.white}"></i>White</span><span><i style="background:${COLOR.rose}"></i>Rosé</span><span><i style="background:${COLOR.sparkling}"></i>Sparkling</span><span>★ 90+</span></div>${hint}
+  const ramp = cols => cols.map(c => `<i style="background:${c};margin-right:1px"></i>`).join('');
+  return `<div class="legend"><span>${ramp(['#a8323e','#8c2335','#741b37','#561431','#3d0c24'])} Red, light to inky</span><span>${ramp(['#ece6ad','#e5d58a','#dcbc5e','#c88c2c'])} White, pale to amber</span><span><i style="background:#e99aa1"></i>Rosé</span><span><i style="background:#e6d48c;box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 3px #c9a227"></i>Sparkling</span><span>★ 90+</span></div>${hint}
     <div class="fridge" id="fridge">
       <div class="body"><div class="inner">${racks.join('')}</div>
         <div class="cap">${used} of ${cap} bottles${unplaced.length ? ` · ${unplaced.length} on a rack, slot unknown` : ''}${hitBottle && !hitBottle.slot ? ' · this bottle is in here, slot not recorded' : ''}${lay.racks.some(r => r.deep > 1 && !r.bulk) ? '<br><span style="opacity:.75">Two deep: the front bottle sits on the rail, the back one peeks out above it.</span>' : ''}</div></div>
@@ -741,7 +767,7 @@ async function bottleCard(rack, pos, deep, d){
   sec.push(`<button class="ghost" onclick="closeSheet();location.hash='#/bottle/${esc(b.code)}'">Full details ›</button>`);
   openSheet(`<div class="bcard">
       ${tabs}
-      <div class="hd"><div class="dot" style="--bc:${COLOR[b.color] || COLOR.red}"></div>
+      <div class="hd"><div class="dot" style="--bc:${shadeFor(b)}"></div>
         <div class="col"><div class="nm">${esc(b.label)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
           <div class="meta" style="margin-top:6px">${badge(b.status)}${b.reserved_for ? `<span class="score sv" style="padding:4px 10px">Held for ${esc(b.reserved_for)}</span>` : ''}${b.siblings_in_cellar > 1 ? `<span>${b.siblings_in_cellar} bottles of this wine</span>` : ''}</div></div></div>
       <div class="facts">${facts.map(([k, v]) => `<div class="fact"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join('')}</div>
