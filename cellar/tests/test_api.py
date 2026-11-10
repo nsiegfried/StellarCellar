@@ -247,3 +247,21 @@ def test_export_import_db():
         assert r["ok"] and r["bottles"] >= total   # raw rows include opened and gifted bottles
         assert client2.get("/api/summary").json()["total"] == total
         assert client2.post("/api/import/db", json={"db_base64": base64.b64encode(b"nope").decode()}).status_code in (400, 409)
+
+
+def test_presets_zones_and_bulk():
+    with TestClient(app) as client:
+        presets = client.get("/api/layout-presets").json()
+        tall = next(p for p in presets if p["id"] == "tall116")
+        assert tall["capacity"] == 110 and tall["zones"] == ["Upper", "Lower"] and len(tall["racks"]) == 11
+        loc = client.post("/api/locations", json={"name": "NewAir"}).json()
+        lay = {"zones": ["Upper", "Lower"], "racks": tall["racks"] + [{"name": "Z", "across": 6, "deep": 1, "zone": 1, "bulk": True}]}
+        r = client.post(f"/api/location/{loc['code']}/layout", json={"kind": "fridge", "layout": lay}).json()
+        assert r["capacity"] == 116 and r["layout"]["racks"][-1]["bulk"] is True
+        b = client.post("/api/bottles", json={"producer": "Bulk Test", "quantity": 2}).json()
+        # bulk rack takes a bare rack name, slotted racks need a position
+        assert client.post(f"/api/bottle/{b['codes'][0]}/slot", json={"location_code": loc["code"], "slot": "Z"}).json()["slot"] == "Z"
+        assert client.post(f"/api/bottle/{b['codes'][1]}/slot", json={"location_code": loc["code"], "slot": "Z"}).json()["slot"] == "Z"
+        assert client.post(f"/api/bottle/{b['codes'][1]}/slot", json={"location_code": loc["code"], "slot": "A"}).status_code == 400
+        det = client.get(f"/api/location/{loc['code']}").json()
+        assert sum(1 for x in det["bottles"] if x["slot"] == "Z") == 2   # bulk does not bump

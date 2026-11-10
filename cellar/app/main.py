@@ -165,8 +165,8 @@ def tasting_out(t: Tasting) -> dict:
             "tasted_on": t.tasted_on.isoformat() if t.tasted_on else None, "history": t.history}
 
 
-DEFAULT_FRIDGE = {"order": "top_down",   # 7 x 16 + 4 = 116; edit per rack in the app
-                  "racks": [{"name": n, "across": 8, "deep": 2} for n in "ABCDEFG"] + [{"name": "H", "across": 4, "deep": 1}]}
+DEFAULT_FRIDGE = {"order": "top_down", "zones": ["Upper", "Lower"],
+                  "racks": [{"name": c, "across": 5, "deep": 2, "zone": 0 if i < 5 else 1} for i, c in enumerate("ABCDEFGHIJK")]}
 
 
 def parse_layout(loc: Location) -> Optional[dict]:
@@ -189,6 +189,7 @@ def validate_layout(lay: dict) -> dict:
     racks = lay.get("racks") or []
     if not 1 <= len(racks) <= 26:
         raise HTTPException(400, "A layout needs 1 to 26 racks")
+    zones = [str(z).strip()[:20] for z in (lay.get("zones") or []) if str(z).strip()][:4]
     clean = []
     seen = set()
     for i, r in enumerate(racks):
@@ -199,8 +200,42 @@ def validate_layout(lay: dict) -> dict:
         across, deep = int(r.get("across", 8)), int(r.get("deep", 1))
         if not 1 <= across <= 30 or not 1 <= deep <= 3:
             raise HTTPException(400, "Each rack holds 1 to 30 across and 1 to 3 deep")
-        clean.append({"name": name, "across": across, "deep": deep})
-    return {"order": lay.get("order", "top_down"), "racks": clean}
+        zone = int(r.get("zone", 0) or 0)
+        if zones and not 0 <= zone < len(zones):
+            zone = 0
+        clean.append({"name": name, "across": across, "deep": deep, "zone": zone,
+                      "bulk": bool(r.get("bulk", False))})
+    return {"order": lay.get("order", "top_down"), "zones": zones, "racks": clean}
+
+
+def _racks(n, across, deep, zone=0, start=0, bulk_last=0):
+    out = [{"name": chr(65 + start + i), "across": across, "deep": deep, "zone": zone} for i in range(n)]
+    if bulk_last:
+        out.append({"name": chr(65 + start + n), "across": bulk_last, "deep": 1, "zone": zone, "bulk": True})
+    return out
+
+
+LAYOUT_PRESETS = [
+    {"id": "counter12", "name": "Countertop, 12 bottles", "note": "Typical: 4 racks of 3", "zones": [],
+     "racks": _racks(4, 3, 1)},
+    {"id": "compact24", "name": "Compact, 18 to 24 bottles", "note": "Typical: 6 racks of 4", "zones": [],
+     "racks": _racks(6, 4, 1)},
+    {"id": "under32", "name": "Under-counter dual zone, 28 to 32", "note": "Typical: 2 upper + 5 lower, 4 to 5 across",
+     "zones": ["Upper", "Lower"], "racks": _racks(2, 4, 1, 0) + _racks(5, 4, 1, 1, start=2)},
+    {"id": "dual46", "name": "24-inch dual zone, 46 to 52", "note": "Typical: 2 upper + 4 lower, 6 across x 2 deep",
+     "zones": ["Upper", "Lower"], "racks": _racks(2, 6, 2, 0) + _racks(4, 6, 2, 1, start=2)},
+    {"id": "free98", "name": "Freestanding, 76 to 98", "note": "Typical: 6 to 7 racks, 7 across x 2 deep, bulk floor",
+     "zones": [], "racks": _racks(6, 7, 2, 0, bulk_last=12)},
+    {"id": "tall116", "name": "Tall dual zone, 116 to 160", "note": "Typical: 5 upper + 6 lower, 5 across x 2 deep",
+     "zones": ["Upper", "Lower"], "racks": _racks(5, 5, 2, 0) + _racks(6, 5, 2, 1, start=5)},
+    {"id": "wallrack", "name": "Wall rack or cubbies", "note": "Grid, one deep", "zones": [],
+     "racks": _racks(6, 6, 1)},
+]
+
+
+@app.get("/api/layout-presets")
+def layout_presets():
+    return [{**p, "capacity": sum(r["across"] * r["deep"] for r in p["racks"])} for p in LAYOUT_PRESETS]
 
 
 def known_people(session: Session) -> list:
@@ -990,14 +1025,20 @@ def set_slot(code: str, body: SlotBody, session: Session = Depends(get_session))
         lay = parse_layout(loc)
         if not lay:
             raise HTTPException(400, "This place has no rack layout")
-        mm = re.fullmatch(r"([A-Z0-9]{1,4})-(\d{1,2})([A-C]?)", slot)
+        mm = re.fullmatch(r"([A-Z0-9]{1,4})(?:-(\d{1,2})([A-C]?))?", slot)
         if not mm:
             raise HTTPException(400, "Slot looks like A-3 or A-3B")
         rack = next((r for r in lay["racks"] if r["name"].upper() == mm.group(1)), None)
-        if not rack or not 1 <= int(mm.group(2)) <= rack["across"] or (mm.group(3) and "ABC".index(mm.group(3)) >= rack["deep"]):
+        if not rack:
+            raise HTTPException(400, f"No rack {mm.group(1)} in {loc.name}")
+        if mm.group(2) is None:
+            if not rack.get("bulk"):
+                raise HTTPException(400, "Pick a position on that rack, like A-3")
+        elif not 1 <= int(mm.group(2)) <= rack["across"] or (mm.group(3) and "ABC".index(mm.group(3)) >= rack["deep"]):
             raise HTTPException(400, f"No slot {slot} in {loc.name}")
-        occupant = session.exec(select(Bottle).where(Bottle.location_id == loc.id, Bottle.slot == slot,
-                                                     Bottle.status == "in_cellar", Bottle.id != b.id)).first()
+        occupant = None if (rack.get("bulk") and mm.group(2) is None) else session.exec(
+            select(Bottle).where(Bottle.location_id == loc.id, Bottle.slot == slot,
+                                 Bottle.status == "in_cellar", Bottle.id != b.id)).first()
         if occupant:
             occupant.slot = ""          # bumped to "somewhere on this place"; the UI tells the user
             session.add(occupant)

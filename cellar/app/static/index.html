@@ -104,6 +104,11 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .slot .star{position:absolute;top:-4px;right:-4px;font-size:10px;color:var(--gold)}
 .fridge .slot .n{font-size:9px;color:rgba(255,255,255,.45)}
 .fridge .slot.tap:active{filter:brightness(1.4)}
+.fridge .zone{color:#e9d9c3;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.85;margin:10px 2px 2px;display:flex;align-items:center;gap:8px}
+.fridge .zone::after{content:"";flex:1;height:2px;background:linear-gradient(90deg,#c9a46a,transparent)}
+.fridge .rack.bulk{grid-template-columns:1fr !important;padding:12px 10px 14px}
+.fridge .rack.bulk .pile{display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
+.fridge .rack.bulk .pile .slot{width:22px;height:22px;aspect-ratio:auto}
 .fridge .door{position:absolute;inset:0;border-radius:18px;background:linear-gradient(135deg,#d8d9dc,#a6a8ad 40%,#c9cbd0);transform-origin:left center;transition:transform .9s cubic-bezier(.4,.1,.2,1);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,.4)}
 .fridge .door .glass{position:absolute;inset:18px 18px 18px 18px;border-radius:10px;background:linear-gradient(160deg,rgba(60,70,90,.85),rgba(20,25,35,.92));box-shadow:inset 0 0 0 2px rgba(255,255,255,.15)}
 .fridge .door .handle{position:absolute;right:8px;top:30%;bottom:30%;width:6px;border-radius:3px;background:linear-gradient(90deg,#eee,#999)}
@@ -144,7 +149,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.12.1';
+const APP_VERSION = '0.13.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
@@ -548,7 +553,18 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
   const unplaced = loc.bottles.filter(b => !b.slot);
   const hitBottle = highlightCode ? loc.bottles.find(b => b.code === highlightCode) : null;
   const hitRack = hitBottle && hitBottle.slot ? hitBottle.slot.split('-')[0] : null;
+  let lastZone = -1;
   const racks = lay.racks.map(r => {
+    let zoneHdr = '';
+    if (lay.zones && lay.zones.length && r.zone !== lastZone) { zoneHdr = `<div class="zone">${esc(lay.zones[r.zone] || '')}</div>`; lastZone = r.zone; }
+    if (r.bulk) {
+      const here = loc.bottles.filter(b => b.slot === r.name);
+      const hit = hitBottle && hitBottle.slot === r.name;
+      const pile = here.map(b => `<div class="slot filled ${hitBottle && b.code === hitBottle.code ? 'hit' : ''} tap" style="--bc:${COLOR[b.color] || COLOR.red}" title="${esc(b.label)}" onclick="location.hash='#/bottle/${esc(b.code)}'">${b.score >= 90 ? '<span class="star">★</span>' : ''}</div>`).join('');
+      const empties = Math.max(0, r.across - here.length);
+      const empty = Array.from({length: Math.min(empties, 30)}, () => `<div class="slot ${placing ? 'tap' : ''}" ${placing ? `onclick="${onSlot}('${r.name}')"` : ''}></div>`).join('');
+      return zoneHdr + `<div class="rack bulk ${hit ? 'hit' : ''}"><span class="lbl">${esc(r.name)} · bulk</span><div class="pile">${pile}${empty}</div></div>`;
+    }
     const rows = [];
     for (let d = r.deep - 1; d >= 0; d--) {            // back row drawn first (smaller), front row last
       for (let i = 1; i <= r.across; i++) {
@@ -562,7 +578,7 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
       }
     }
     const rackHit = hitRack === r.name && !(hitBottle && hitBottle.slot.includes('-') && byslot[hitBottle.slot]) ? 'hit' : (hitRack === r.name ? 'hit' : '');
-    return `<div class="rack ${hitBottle && !hitBottle.slot ? '' : rackHit}" style="grid-template-columns:repeat(${r.across},1fr)"><span class="lbl">${esc(r.name)}</span>${rows.join('')}</div>`;
+    return zoneHdr + `<div class="rack ${hitBottle && !hitBottle.slot ? '' : rackHit}" style="grid-template-columns:repeat(${r.across},1fr)"><span class="lbl">${esc(r.name)}</span>${rows.join('')}</div>`;
   });
   const used = loc.bottles.length, cap = loc.capacity || 0;
   return `<div class="fridge" id="fridge">
@@ -588,17 +604,44 @@ async function slotTapped(slot){
 // layout editor
 async function editLayout(code){
   const l = await api('location/' + code);
-  const lay = l.layout || {order:'top_down', racks:['A','B','C','D','E','F','G'].map(n => ({name:n,across:8,deep:2})).concat([{name:'H',across:4,deep:1}])};
-  window.__lay = lay;
-  const row = (r, i) => `<div class="grid2" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end"><div><label>Rack</label><input value="${esc(r.name)}" onchange="__lay.racks[${i}].name=this.value"></div><div><label>Across</label><input type="number" min="1" max="30" value="${r.across}" onchange="__lay.racks[${i}].across=Number(this.value)"></div><div><label>Deep</label><input type="number" min="1" max="3" value="${r.deep}" onchange="__lay.racks[${i}].deep=Number(this.value)"></div><button class="ghost" style="margin-bottom:12px" onclick="__lay.racks.splice(${i},1);editLayout('${code}')">✕</button></div>`;
+  const presets = await api('layout-presets');
+  const lay = window.__lay && window.__layFor === code ? window.__lay : (l.layout ? JSON.parse(JSON.stringify(l.layout)) : null);
+  window.__layFor = code; window.__lay = lay; window.__presets = presets;
   topbar('Rack layout', {back:'#/location/' + code, noGear:true});
-  view.innerHTML = `<p class="sub">Racks top to bottom. Across is bottles side by side; Deep is rows front to back. Capacity: <b>${lay.racks.reduce((a,r)=>a+r.across*r.deep,0)}</b></p>
+  if (!lay) {
+    view.innerHTML = `<p class="sub">Start from a typical layout or describe your fridge. Every rack is editable afterwards.</p>
+      <div class="card"><div class="title">Count my fridge</div>
+        <div class="grid2"><div><label>Racks in upper zone</label><input id="cmU" type="number" min="0" value="5"></div><div><label>Racks in lower zone</label><input id="cmL" type="number" min="0" value="6"></div></div>
+        <div class="grid2"><div><label>Bottles across a rack</label><input id="cmA" type="number" min="1" value="5"></div><div><label>Rows deep</label><select id="cmD"><option value="1">One</option><option value="2" selected>Two</option></select></div></div>
+        <button class="big" onclick="countMyFridge('${code}')">Build layout</button></div>
+      <h2>Typical layouts</h2>
+      ${presets.map(p => `<div class="card tap" onclick="usePreset('${code}','${p.id}')"><div class="row"><div class="col"><div class="title">${esc(p.name)}</div><div class="sub">${esc(p.note)} · ${p.capacity} bottles</div></div><span class="sub">›</span></div></div>`).join('')}`;
+    return;
+  }
+  const zones = lay.zones || [];
+  const row = (r, i) => `<div class="grid2" style="grid-template-columns:1fr 1fr 1fr ${zones.length ? '1.3fr' : ''} auto;align-items:end">
+      <div><label>Rack</label><input value="${esc(r.name)}" onchange="__lay.racks[${i}].name=this.value"></div>
+      <div><label>Across</label><input type="number" min="1" max="30" value="${r.across}" onchange="__lay.racks[${i}].across=Number(this.value)"></div>
+      <div><label>Deep</label><input type="number" min="1" max="3" value="${r.deep}" onchange="__lay.racks[${i}].deep=Number(this.value)"></div>
+      ${zones.length ? `<div><label>Zone</label><select onchange="__lay.racks[${i}].zone=Number(this.value)">${zones.map((z,zi) => `<option value="${zi}" ${(r.zone||0)===zi?'selected':''}>${esc(z)}</option>`).join('')}</select></div>` : ''}
+      <button class="ghost" style="margin-bottom:12px" onclick="__lay.racks.splice(${i},1);editLayout('${code}')">✕</button></div>
+      <label style="display:flex;align-items:center;gap:8px;margin:-6px 0 10px"><input type="checkbox" style="width:auto;min-height:0;margin:0" ${r.bulk?'checked':''} onchange="__lay.racks[${i}].bulk=this.checked">Bulk area (bottles stacked, no slots; Across = how many it holds)</label>`;
+  view.innerHTML = `<p class="sub">Racks top to bottom. Across is bottles side by side; Deep is rows front to back. Capacity: <b>${lay.racks.reduce((a,r)=>a+r.across*(r.bulk?1:r.deep),0)}</b></p>
+    <div class="card"><label>Zones (optional, e.g. Upper, Lower; comma separated)</label><input value="${esc(zones.join(', '))}" onchange="__lay.zones=this.value.split(',').map(s=>s.trim()).filter(Boolean);editLayout('${code}')"></div>
     <div class="card">${lay.racks.map(row).join('')}
-    <button class="ghost" style="width:100%" onclick="__lay.racks.push({name:String.fromCharCode(65+__lay.racks.length),across:8,deep:2});editLayout('${code}')">Add a rack</button></div>
+    <button class="ghost" style="width:100%" onclick="__lay.racks.push({name:String.fromCharCode(65+__lay.racks.length),across:5,deep:2,zone:(__lay.racks.at(-1)||{}).zone||0});editLayout('${code}')">Add a rack</button></div>
     <button class="big" onclick="saveLayout('${code}')">Save layout</button>
-    ${l.layout ? `<button class="ghost" style="width:100%;margin-top:10px" onclick="clearLayout('${code}')">Remove layout (plain shelf)</button>` : ''}`;
+    <div class="grid2" style="margin-top:10px"><button class="ghost" onclick="window.__lay=null;editLayout('${code}')">Start over</button>${l.layout ? `<button class="danger" onclick="clearLayout('${code}')">Remove layout</button>` : '<span></span>'}</div>`;
 }
-async function saveLayout(code){ try { await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({kind:'fridge', layout: window.__lay})}); toast('Layout saved.'); location.hash = '#/location/' + code; } catch (e) { toast(e.message); } }
+function usePreset(code, id){ const p = window.__presets.find(x => x.id === id); window.__lay = {order:'top_down', zones: p.zones, racks: JSON.parse(JSON.stringify(p.racks))}; window.__layFor = code; editLayout(code); }
+function countMyFridge(code){
+  const u = Number(document.getElementById('cmU').value)||0, lo = Number(document.getElementById('cmL').value)||0, a = Number(document.getElementById('cmA').value)||5, d = Number(document.getElementById('cmD').value)||1;
+  const racks = []; let n = 0;
+  for (let i = 0; i < u; i++) racks.push({name: String.fromCharCode(65+n++), across:a, deep:d, zone:0});
+  for (let i = 0; i < lo; i++) racks.push({name: String.fromCharCode(65+n++), across:a, deep:d, zone: u ? 1 : 0});
+  window.__lay = {order:'top_down', zones: u && lo ? ['Upper','Lower'] : [], racks}; window.__layFor = code; editLayout(code);
+}
+async function saveLayout(code){ try { await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({kind:'fridge', layout: window.__lay})}); window.__lay = null; toast('Layout saved.'); location.hash = '#/location/' + code; } catch (e) { toast(e.message); } }
 async function clearLayout(code){ const ok = await choose('Remove the rack layout?', [{label:'Remove it', sub:'Bottles stay in this place; slot positions are cleared.', value:true}]); if (!ok) return; await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({layout: null})}); location.hash = '#/location/' + code; }
 
 // ---------- Location ----------
