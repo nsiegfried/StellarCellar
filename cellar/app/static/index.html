@@ -115,7 +115,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .cell:active .slot.d0{filter:brightness(1.35)}
 .fridge .rack.cols .lbl{left:2px;top:auto;bottom:1px;background:none;color:#6b5634;font-size:13px;padding:0 4px;z-index:6}
 .fridge .slot.tap:active{filter:brightness(1.4)}
-.fridge .zone{color:#e9d9c3;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.85;margin:10px 2px 2px;display:flex;align-items:center;gap:8px}
+.fridge .zone{color:#e9d9c3;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.85;margin:10px 2px 2px;display:flex;align-items:center;gap:8px}
 .fridge .zone::after{content:"";flex:1;height:2px;background:linear-gradient(90deg,#c9a46a,transparent)}
 .fridge .rack.bulk{grid-template-columns:1fr !important;padding:12px 10px 14px}
 .fridge .rack.bulk .pile{display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
@@ -163,7 +163,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.13.3';
+const APP_VERSION = '0.13.4';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
@@ -601,7 +601,7 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
   return `<div class="legend"><span><i style="background:${COLOR.red}"></i>Red</span><span><i style="background:${COLOR.white}"></i>White</span><span><i style="background:${COLOR.rose}"></i>Rosé</span><span><i style="background:${COLOR.sparkling}"></i>Sparkling</span><span>★ 90+</span></div>
     <div class="fridge" id="fridge">
       <div class="body"><div class="inner">${racks.join('')}</div>
-        <div class="cap">${used} of ${cap} bottles${unplaced.length ? ` · ${unplaced.length} on a rack, slot unknown` : ''}${hitBottle && !hitBottle.slot ? ' · this bottle is in here, slot not recorded' : ''}</div></div>
+        <div class="cap">${used} of ${cap} bottles${unplaced.length ? ` · ${unplaced.length} on a rack, slot unknown` : ''}${hitBottle && !hitBottle.slot ? ' · this bottle is in here, slot not recorded' : ''}${lay.racks.some(r => r.deep > 1 && !r.bulk) ? '<br><span style="opacity:.75">Two deep: the front bottle sits on the rail, the back one peeks out above it.</span>' : ''}</div></div>
       <div class="door" onclick="document.getElementById('fridge').classList.add('open')"><div class="glass"></div><div class="handle"></div><div class="name">${esc(loc.name)}</div><div class="hint">Tap to open</div></div>
     </div>`;
 }
@@ -614,6 +614,12 @@ async function cellTapped(rack, pos, deep, placing){
     if (deep > 1) {
       id = await choose(`Rack ${rack}, position ${pos}`, layers.map(l => ({label: l.d === 0 ? 'Front' : l.d === 1 ? 'Back' : 'Far back', sub: l.b ? `Now: ${l.b.label}` : 'Empty', value: l.id})));
       if (!id) return;
+    }
+    const occupant = slots[id];
+    if (occupant && occupant.code !== placingCode) {
+      const ok = await choose(`Replace the ${occupant.label} at ${id}?`, [
+        {label: 'Replace it', sub: `It moves to "Slot not recorded" on this fridge`, value: true}]);
+      if (!ok) return;
     }
     return slotTapped(id);
   }
@@ -704,22 +710,23 @@ async function locationPage(code, mode, arg){
   window.__placingLabel = placingLabel;
   const highlight = mode === 'find' && arg;
   const parent = placing ? '#/bottle/' + arg : '#/cellar';
-  topbar(placing ? 'Tap the slot' : l.name, {back: parent, noGear:true});
+  topbar(placing ? 'Tap the slot' : l.name, placing ? {back: parent, noGear:true} : {back: parent, action:{icon:'＋', label:'Add wine', onclick:`addWineHere('${esc(code)}')`}});
   if (l.layout) setTimeout(() => { const b = document.querySelector('#top .tbtn'); if (b) b.onclick = () => closeFridgeThen(parent); }, 0);
   const groups = {}; l.bottles.forEach(c => { (groups[c.label] = groups[c.label] || {...c, count:0}).count++; });
   let fridge = '';
   if (l.layout) { placingCode = placing || null; fridge = renderFridge(l, {highlightCode: highlight, placing: !!placing, onSlot: 'slotTapped'}); }
   const unplaced = l.layout ? l.bottles.filter(b => !b.slot) : [];
   view.innerHTML = `
-    ${placing ? `<div class="banner" style="background:var(--wine)"><div>Where does the ${esc(placingLabel || 'bottle')} sit?<div class="sub" style="color:#fff;opacity:.9">Tap its spot on a rack.</div></div><button onclick="slotTapped('')">Skip</button></div>` : ''}
+    ${placing ? `<div class="banner" style="background:var(--wine)"><div>Where does the ${esc(placingLabel || 'bottle')} sit?<div class="sub" style="color:#fff;opacity:.9">Tap its spot on a rack, or skip to record the fridge only.</div></div><button onclick="slotTapped('')">Skip slot</button></div>` : ''}
     ${fridge}
-    ${placing ? '' : `<p class="sub">${l.bottles.length} bottle${l.bottles.length===1?'':'s'}${l.capacity ? ` of ${l.capacity}` : ''} · ${esc(code)}</p>
-    <button class="big" onclick="addWineHere('${esc(code)}')">Add wine to ${esc(l.name)}</button>
-    <div class="grid2" style="margin-top:10px"><button class="ghost" onclick="putHere('${esc(code)}')">Scan bottles in</button>${l.bottles.length ? `<button class="ghost" onclick="printLabels(${JSON.stringify(l.bottles.map(b=>b.code))})">Print ${l.bottles.length} labels</button>` : '<span></span>'}</div>
-    <button class="ghost" style="width:100%;margin-top:10px" onclick="location.hash='#/location/${esc(code)}/layout'">${l.layout ? 'Edit rack layout' : 'Set up as a wine fridge (racks and slots)'}</button>
+    ${placing ? '' : `
+    <div class="grid2"><button onclick="putHere('${esc(code)}')">Scan bottles in</button><button class="ghost" onclick="addWineHere('${esc(code)}')">Add wine</button></div>
     ${unplaced.length ? `<h2>Slot not recorded <span class="sub">${unplaced.length}</span></h2>${unplaced.map(b => `<div class="card tap" onclick="placeInFridge('${esc(b.code)}','${esc(code)}')"><div class="row"><div class="col"><div class="title">${esc(b.label)}</div><div class="sub">Tap to place it on the racks</div></div>${badge(b.status)}</div></div>`).join('')}` : ''}
-    <h2>Bottles</h2>
-    ${Object.values(groups).map(bottleRow).join('') || '<div class="card empty">Empty. Scan bottles into this place or move them here.</div>'}`}`;
+    ${l.layout ? (l.bottles.length ? `<div class="card tap row" style="margin-top:12px" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;this.querySelector('.chev').textContent=this.nextElementSibling.hidden?'›':'⌄'"><div class="title">All ${l.bottles.length} bottles as a list</div><span class="sub chev">›</span></div><div hidden>${Object.values(groups).map(bottleRow).join('')}</div>` : '')
+      : `<h2>Bottles</h2>${Object.values(groups).map(bottleRow).join('') || '<div class="card empty">Empty. Scan bottles into this place or move them here.</div>'}`}
+    <h2>More</h2>
+    <div class="grid2"><button class="ghost" onclick="location.hash='#/location/${esc(code)}/layout'">${l.layout ? 'Edit rack layout' : 'Set up racks'}</button>${l.bottles.length ? `<button class="ghost" onclick="printLabels(${JSON.stringify(l.bottles.map(b=>b.code))})">Print ${l.bottles.length} labels</button>` : '<span></span>'}</div>
+    <p class="sub" style="text-align:center;margin-top:8px">Place code ${esc(code)}</p>`}`;
   if (l.layout) openDoor(placing || highlight ? 200 : 450);
 }
 async function addWineHere(code){
