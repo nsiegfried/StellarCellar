@@ -77,6 +77,18 @@ nav a.scan svg{stroke:#fff}
 #sheet h3{margin:0 0 12px;font-size:var(--fs)}
 #sheet .opt{display:block;width:100%;text-align:left;background:var(--bg);color:var(--ink);border:1.5px solid var(--line);margin-bottom:8px;padding:14px;border-radius:12px;font-weight:500}
 #sheet .opt small{color:var(--muted);display:block;font-weight:400;font-size:var(--fs-sub)}
+.bcard .hd{display:flex;gap:14px;align-items:flex-start;margin-bottom:12px}
+.bcard .dot{width:44px;height:44px;border-radius:50%;flex:none;background:radial-gradient(circle at 35% 35%,#fff4 0,#0000 45%),var(--bc,#7b1e3a);box-shadow:inset 0 0 0 2px rgba(0,0,0,.08)}
+.bcard .nm{font-size:var(--fs-title);font-weight:700;line-height:1.2}
+.bcard .facts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 14px}
+.bcard .fact{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.bcard .fact .k{font-size:calc(var(--fs-sub) * .85);color:var(--muted)}
+.bcard .fact .v{font-weight:700;margin-top:2px}
+.bcard .tabs{display:flex;gap:6px;margin:0 0 12px}
+.bcard .tabs button{flex:1;min-height:38px;padding:6px;border-radius:10px;background:var(--bg);color:var(--muted);border:1.5px solid var(--line);font-weight:600}
+.bcard .tabs button.on{background:var(--wine);color:#fff;border-color:var(--wine)}
+.bcard .sec{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.bcard .sec button{min-height:44px;padding:10px;font-size:var(--fs-sub)}
 #toast{position:fixed;left:14px;right:14px;bottom:calc(var(--nav-h) + 14px + env(safe-area-inset-bottom));background:var(--ink);color:var(--bg);padding:14px;border-radius:14px;display:none;z-index:9;overflow:hidden}
 #toast .trow{display:flex;justify-content:space-between;align-items:center;gap:12px}
 #toast button{background:var(--bg);color:var(--ink);padding:8px 14px;min-height:40px}
@@ -163,7 +175,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.14.2';
+const APP_VERSION = '0.14.3';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -677,6 +689,7 @@ async function cellTapped(rack, pos, deep, placing){
     return slotTapped(id);
   }
   const where = d => deep === 1 ? '' : d === 0 ? 'front' : d === 1 ? 'back' : 'far back';
+  if (layers.some(l => l.b)) return bottleCard(rack, pos, deep, layers.find(l => l.b).d);
   const opts = layers.map(l => l.b
     ? {label: l.b.label, sub: deep > 1 ? `Open · ${where(l.d)}` : 'Open', value: 'open:' + l.b.code}
     : {label: deep > 1 ? `Add wine to the ${where(l.d)}` : 'Add wine here', sub: 'Pick from New arrivals or add a new bottle', value: 'fill:' + l.id});
@@ -686,6 +699,55 @@ async function cellTapped(rack, pos, deep, placing){
   const [, , locCode] = location.hash.split('/');
   if (kind === 'open') location.hash = '#/bottle/' + val;
   else location.hash = `#/location/${locCode}/fill/${val}`;
+}
+
+// ---------- bottle card over the fridge ----------
+async function bottleCard(rack, pos, deep, d){
+  const slots = window.__fridgeSlots || {};
+  const [, , locCode] = location.hash.split('/');
+  const layers = Array.from({length: deep}, (_, i) => ({d: i, id: slotId(rack, pos, i), b: slots[slotId(rack, pos, i)]}));
+  const here = layers[d];
+  const label = i => i === 0 ? 'Front' : i === 1 ? 'Back' : 'Far back';
+  openSheet(`<div class="bcard"><div class="sub">Loading…</div></div>`);
+  let b; try { b = await api('bottle/' + here.b.code); } catch (e) { if (e.session) { closeSheet(); return sessionEnded(); } closeSheet(); return toast(e.message); }
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  const win = b.window_from || b.window_to ? (b.window_from && b.window_to ? `${b.window_from}–${b.window_to}` : b.window_from ? `From ${b.window_from}` : `By ${b.window_to}`) : '';
+  const sub = [cap(b.color === 'rose' ? 'rosé' : b.color), [b.region, b.country].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
+  const score = b.journal.find(j => j.score != null);
+  const price = b.est_value != null ? money(b.est_value, b.currency) : b.purchase_price != null ? money(b.purchase_price, b.currency) : '';
+  const facts = [
+    ['Where', `Rack ${rack}, spot ${pos}${deep > 1 ? ' · ' + label(d).toLowerCase() : ''}`],
+    ['Drink', win || 'No window yet'],
+    [b.est_value != null ? 'Value' : 'Paid', price || '—'],
+    ['Score', score ? `${score.score} · ${score.taster || ''}`.trim() : 'Not rated'],
+  ];
+  const other = deep > 1 ? layers[d === 0 ? 1 : 0] : null;
+  const tabs = deep > 1 && layers.filter(l => l.b).length > 1
+    ? `<div class="tabs">${layers.map(l => `<button class="${l.d === d ? 'on' : ''}" ${l.b ? `onclick="bottleCard('${rack}',${pos},${deep},${l.d})"` : 'disabled'}>${label(l.d)}${l.b ? '' : ' (empty)'}</button>`).join('')}</div>` : '';
+  const sec = [];
+  if (other) sec.push(`<button class="ghost" onclick="swapDepth('${esc(b.code)}','${esc(locCode)}','${here.id}','${other.id}')">${other.b ? `Swap with ${label(other.d).toLowerCase()}` : `Move to the ${label(other.d).toLowerCase()}`}</button>`);
+  sec.push(`<button class="ghost" onclick="closeSheet();placeInFridge('${esc(b.code)}','${esc(locCode)}')">Move to another spot</button>`);
+  if (other && !other.b) sec.push(`<button class="ghost" onclick="closeSheet();location.hash='#/location/${esc(locCode)}/fill/${other.id}'">Add a wine to the ${label(other.d).toLowerCase()}</button>`);
+  sec.push(`<button class="ghost" onclick="closeSheet();location.hash='#/bottle/${esc(b.code)}'">Full details ›</button>`);
+  openSheet(`<div class="bcard">
+      ${tabs}
+      <div class="hd"><div class="dot" style="--bc:${COLOR[b.color] || COLOR.red}"></div>
+        <div class="col"><div class="nm">${esc(b.label)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}
+          <div class="meta" style="margin-top:6px">${badge(b.status)}${b.reserved_for ? `<span class="score sv" style="padding:4px 10px">Held for ${esc(b.reserved_for)}</span>` : ''}${b.siblings_in_cellar > 1 ? `<span>${b.siblings_in_cellar} bottles of this wine</span>` : ''}</div></div></div>
+      <div class="facts">${facts.map(([k, v]) => `<div class="fact"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join('')}</div>
+      ${b.journal.find(j => j.notes) ? `<p class="sub" style="margin:-4px 0 12px">“${esc(b.journal.find(j => j.notes).notes)}”</p>` : ''}
+      ${b.bottle_status === 'in_cellar' ? `<button class="big" onclick="closeSheet();drink('${esc(b.code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Drink this</button>` : ''}
+      <div class="sec">${sec.join('')}</div>
+      <button class="ghost" style="width:100%;margin-top:10px;border:0" onclick="closeSheet()">Close</button>
+    </div>`);
+}
+async function swapDepth(code, locCode, fromId, toId){
+  const occupant = (window.__fridgeSlots || {})[toId];
+  try {
+    await api(`bottle/${code}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot: toId})});
+    if (occupant) await api(`bottle/${occupant.code}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot: fromId})});
+    closeSheet(); toast(occupant ? 'Swapped front and back.' : `Moved to ${toId}.`); go('#/location/' + locCode + '/find/' + code);
+  } catch (e) { toast(e.message); }
 }
 
 // ---------- fill an empty spot: New arrivals first, then elsewhere, search, or a new bottle ----------
