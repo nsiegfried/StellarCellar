@@ -163,12 +163,21 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.14.0';
+const APP_VERSION = '0.14.1';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
+  if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
   if (!r.ok) { const e = await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail || 'Request failed'); }
   return r.json();
 };
+function sessionEnded(){
+  document.getElementById('top').innerHTML = '<span class="spacer"></span><div class="ttl">Stellar Cellar</div><span class="spacer"></span>';
+  view.innerHTML = `<div class="card" style="text-align:center;margin-top:30px">
+      <div class="title" style="font-size:var(--fs-title);margin-bottom:8px">Your Home Assistant session ended</div>
+      <p class="sub">This happens when the app has been open for a long time. Reloading signs you back in; nothing is lost.</p>
+      <button class="big" onclick="reloadApp()">Reload Stellar Cellar</button></div>`;
+}
+function reloadApp(){ try { window.top.location.reload(); } catch (_) { location.reload(); } }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const view = document.getElementById('view');
 const STATUS = {ready:'Ready', drink_soon:'Drink soon', past_peak:'Past peak', too_young:'Wait', unknown:'No window', opened:'Opened', gifted:'Given away'};
@@ -431,21 +440,22 @@ async function saveBottles(){
 
 // ---------- Bottle ----------
 async function bottle(code){
-  let b; try { b = await api('bottle/' + code); } catch (e) { topbar('Not found', {back:'#/cellar'}); view.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
+  let b; try { b = await api('bottle/' + code); } catch (e) { if (e.session) return sessionEnded(); topbar('Not found', {back:'#/cellar'}); view.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
+  window.__bottle = b; window.__bottleCode = code;
   CUR = b.currency || CUR;
   const inCellar = b.bottle_status === 'in_cellar', incoming = b.bottle_status === 'incoming';
   const win = b.window_from || b.window_to ? `${b.window_from || '…'} to ${b.window_to || '…'}${b.window_source === 'ai' ? ' (AI draft)' : ''}` : 'none on record';
-  topbar(b.label, {back:'#/cellar', noGear:true});
+  topbar(b.label, {back:'#/cellar', action:{icon:'⋯', label:'More actions', onclick:'bottleMenu()'}});
+  const whereLink = b.location_code && (inCellar || incoming)
+    ? `<a href="#/location/${esc(b.location_code)}/find/${esc(code)}" style="color:var(--wine);text-decoration:none;font-weight:700">📍 ${esc(b.location)}${b.slot ? ' · ' + esc(b.slot) : ''} ›</a>`
+    : `<span>📍 <b>${esc(b.location)}${b.slot ? ' · ' + esc(b.slot) : ''}</b></span>`;
   view.innerHTML = `
     <div class="card">
       <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div></div>${badge(inCellar ? b.status : incoming ? 'unknown' : b.bottle_status === 'gifted' ? 'gifted' : 'opened')}</div>
       ${b.reserved_for ? `<div class="banner" style="margin:10px 0 0"><div>Held for ${esc(b.reserved_for)}${b.reserved_note ? `<div class="sub" style="color:#fff;opacity:.9">${esc(b.reserved_note)}</div>` : ''}</div><button onclick="releaseHold('${esc(code)}')">Release</button></div>` : ''}
-      <div class="meta" style="margin:10px 0 14px"><span>📍 <b>${esc(b.location)}${b.slot ? ' · ' + esc(b.slot) : ''}</b></span>${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
+      <div class="meta" style="margin:10px 0 14px">${whereLink}${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
       ${inCellar ? `<div class="grid2"><button class="big" id="drinkBtn" onclick="drink('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Drink this</button><button class="big ghost" id="giftBtn" onclick="giftBottle('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Gift this</button></div>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
     </div>
-    ${inCellar ? `<div class="grid2"><button class="ghost" onclick="moveBottle('${esc(code)}')">Move</button><button class="ghost" onclick="printLabels(['${esc(code)}'])">Print label</button></div>
-    ${b.location_code ? `<div class="grid2" style="margin-top:10px"><button onclick="location.hash='#/location/${esc(b.location_code)}/find/${esc(code)}'">Show me where</button><button class="ghost" onclick="placeInFridge('${esc(code)}','${esc(b.location_code)}')">${b.slot ? 'Slot ' + esc(b.slot) + ' · change' : 'Set the slot'}</button></div>` : ''}` : ''}
-    <div class="grid2" style="margin-top:10px"><button class="ghost" onclick="location.hash='#/edit/${esc(code)}'">Edit details</button>${(inCellar || incoming) && !b.reserved_for ? `<button class="ghost" onclick="holdBottle('${esc(code)}')">Hold for someone</button>` : '<span></span>'}</div>
     <h2>Details</h2>
     <div class="card"><dl class="kv">
       <dt>Window</dt><dd>${esc(win)}</dd>
@@ -458,7 +468,6 @@ async function bottle(code){
     </dl></div>
     ${b.journal.length ? `<h2>Journal</h2>${b.journal.map(j => `<div class="card"><div class="row"><div class="col"><div class="title">${j.score != null ? esc(j.band) : esc(j.verdict || 'tasted')}</div><div class="sub">${esc(j.taster)}${j.where ? ' · ' + esc(j.where) : ''}</div></div>${scoreTag(j.score, j.verdict)}</div>${j.notes ? `<div style="margin-top:6px">${esc(j.notes)}</div>` : ''}${j.history ? `<div class="sub">${esc(j.history)}</div>` : ''}</div>`).join('')}` : ''}
     ${inCellar || incoming ? `<button class="big ghost" onclick="location.hash='#/journal/new/${esc(code)}'">Rate this wine</button>` : ''}
-    ${inCellar ? `<h2>Fix a mistake</h2><div class="grid2"><button class="danger" onclick="deleteBottle('${esc(code)}')">Delete this bottle</button>${b.siblings_in_cellar > 1 ? `<button class="danger" onclick="deleteAll(${b.wine_id}, ${b.siblings_in_cellar})">Delete all ${b.siblings_in_cellar}</button>` : '<span></span>'}</div><p class="sub">Delete is for mistakes. Use Drink for bottles you opened.</p>` : ''}
     ${b.history.length ? '<h2>History</h2>' + b.history.map(h => `<div class="card"><div class="title">${h.reason === 'gift' ? 'Given to ' + esc(h.recipient) : 'Opened'}</div><div class="sub">${new Date(h.when).toLocaleDateString()}${h.occasion ? ' · ' + esc(h.occasion) : ''}${h.rating ? ' · ' + '★'.repeat(h.rating) : ''}</div>${h.note ? `<div>${esc(h.note)}</div>` : ''}</div>`).join('') : ''}`;
 }
 async function pickPerson(title, people, preset){
@@ -466,6 +475,29 @@ async function pickPerson(title, people, preset){
   let who = await choose(title, opts); if (!who) return null;
   if (who === '__new') who = await askText(title, 'Name');
   return who;
+}
+async function bottleMenu(){
+  const b = window.__bottle, code = window.__bottleCode; if (!b) return;
+  const inCellar = b.bottle_status === 'in_cellar', incoming = b.bottle_status === 'incoming';
+  const opts = [];
+  if (inCellar) opts.push({label:'Move to another place', value:'move'});
+  if (inCellar && b.location_code) opts.push({label: b.slot ? `Change the slot (now ${b.slot})` : 'Set the slot', value:'slot'});
+  if ((inCellar || incoming) && !b.reserved_for) opts.push({label:'Hold for someone', sub:'Keeps it out of Tonight and suggestions', value:'hold'});
+  if (inCellar || incoming) opts.push({label:'Print label', value:'print'});
+  opts.push({label:'Edit details', value:'edit'});
+  if (inCellar) opts.push({label:'Delete…', sub:'For mistakes. Use Drink for bottles you opened.', value:'delete'});
+  const pick = await choose(b.label, opts);
+  if (pick === 'move') moveBottle(code);
+  else if (pick === 'slot') placeInFridge(code, b.location_code);
+  else if (pick === 'hold') holdBottle(code);
+  else if (pick === 'print') printLabels([code]);
+  else if (pick === 'edit') location.hash = '#/edit/' + code;
+  else if (pick === 'delete') {
+    if (b.siblings_in_cellar > 1) {
+      const which = await choose('Delete which?', [{label:'Just this bottle', value:'one'}, {label:`All ${b.siblings_in_cellar} bottles of this wine`, value:'all'}]);
+      if (which === 'one') deleteBottle(code); else if (which === 'all') deleteAll(b.wine_id, b.siblings_in_cellar);
+    } else deleteBottle(code);
+  }
 }
 async function drink(code, heldFor){
   if (heldFor) { const ok = await choose(`This bottle is held for ${heldFor}. Open it anyway?`, [{label:'Open it anyway', value:true}]); if (!ok) return; }
@@ -1036,7 +1068,7 @@ async function route(){
     else if (page === 'journal' && arg === 'new') await journalNew(location.hash.split('/')[3] ? location.hash.split('/')[3].toUpperCase() : null);
     else if (page === 'journal') await journal();
     else await tonight();
-  } catch (e) { view.innerHTML = `<div class="card empty">${esc(e.message)}<br><br><button class="ghost" onclick="route()">Try again</button></div>`; }
+  } catch (e) { if (e.session) sessionEnded(); else view.innerHTML = `<div class="card empty">${esc(e.message)}<br><br><button class="ghost" onclick="route()">Try again</button></div>`; }
   finally { clearTimeout(slow); }
 }
 window.addEventListener('hashchange', route);
