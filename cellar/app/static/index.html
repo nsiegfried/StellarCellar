@@ -163,7 +163,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.14.1';
+const APP_VERSION = '0.14.2';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -444,30 +444,32 @@ async function bottle(code){
   window.__bottle = b; window.__bottleCode = code;
   CUR = b.currency || CUR;
   const inCellar = b.bottle_status === 'in_cellar', incoming = b.bottle_status === 'incoming';
-  const win = b.window_from || b.window_to ? `${b.window_from || '…'} to ${b.window_to || '…'}${b.window_source === 'ai' ? ' (AI draft)' : ''}` : 'none on record';
-  topbar(b.label, {back:'#/cellar', action:{icon:'⋯', label:'More actions', onclick:'bottleMenu()'}});
+  const win = b.window_from || b.window_to ? `${b.window_from ? (b.window_to ? `Drink ${b.window_from}–${b.window_to}` : `From ${b.window_from}`) : `By ${b.window_to}`}${b.window_source === 'ai' ? ' (estimate)' : ''}` : '';
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  const subline = [cap(b.color === 'rose' ? 'rosé' : b.color), [b.region, b.country].filter(Boolean).join(', '), win].filter(Boolean).join(' · ');
+  topbar('Bottle', {back:'#/cellar', action:{icon:'⋯', label:'More actions', onclick:'bottleMenu()'}});
   const whereLink = b.location_code && (inCellar || incoming)
     ? `<a href="#/location/${esc(b.location_code)}/find/${esc(code)}" style="color:var(--wine);text-decoration:none;font-weight:700">📍 ${esc(b.location)}${b.slot ? ' · ' + esc(b.slot) : ''} ›</a>`
     : `<span>📍 <b>${esc(b.location)}${b.slot ? ' · ' + esc(b.slot) : ''}</b></span>`;
   view.innerHTML = `
     <div class="card">
-      <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(b.region)}${b.country ? ', ' + esc(b.country) : ''} · ${esc(b.color)}</div></div>${badge(inCellar ? b.status : incoming ? 'unknown' : b.bottle_status === 'gifted' ? 'gifted' : 'opened')}</div>
+      <div class="row"><div class="col"><div class="title" style="font-size:var(--fs-title)">${esc(b.label)}</div><div class="sub">${esc(subline)}</div></div>${badge(inCellar ? b.status : incoming ? 'unknown' : b.bottle_status === 'gifted' ? 'gifted' : 'opened')}</div>
       ${b.reserved_for ? `<div class="banner" style="margin:10px 0 0"><div>Held for ${esc(b.reserved_for)}${b.reserved_note ? `<div class="sub" style="color:#fff;opacity:.9">${esc(b.reserved_note)}</div>` : ''}</div><button onclick="releaseHold('${esc(code)}')">Release</button></div>` : ''}
       <div class="meta" style="margin:10px 0 14px">${whereLink}${b.journal.find(j => j.score != null) ? `<span>${scoreTag(b.journal.find(j => j.score != null).score)} ${esc(b.journal.find(j => j.score != null).taster)}</span>` : ''}</div>
       ${inCellar ? `<div class="grid2"><button class="big" id="drinkBtn" onclick="drink('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Drink this</button><button class="big ghost" id="giftBtn" onclick="giftBottle('${esc(code)}', ${b.reserved_for ? `'${esc(b.reserved_for)}'` : 'null'})">Gift this</button></div>` : incoming ? `<button class="big" id="arrBtn" onclick="arrived('${esc(code)}')">It arrived</button><div class="sub" style="text-align:center;margin-top:8px">On order. Not counted in the cellar yet.</div>` : ''}
     </div>
-    <h2>Details</h2>
-    <div class="card"><dl class="kv">
-      <dt>Window</dt><dd>${esc(win)}</dd>
-      <dt>Paid</dt><dd>${money(b.purchase_price, b.currency) || '—'}</dd>
-      <dt>Value</dt><dd>${money(b.est_value, b.currency) || '—'}</dd>
-      ${b.tags ? `<dt>Tags</dt><dd>${esc(b.tags.replace(/,/g,' · '))}</dd>` : ''}
-      ${b.wine_notes ? `<dt>Notes</dt><dd>${esc(b.wine_notes)}</dd>` : ''}
-      ${b.siblings_in_cellar > 1 ? `<dt>In cellar</dt><dd>${b.siblings_in_cellar} bottles of this wine</dd>` : ''}
-      <dt>Code</dt><dd class="sub">${esc(code)}</dd>
-    </dl></div>
-    ${b.journal.length ? `<h2>Journal</h2>${b.journal.map(j => `<div class="card"><div class="row"><div class="col"><div class="title">${j.score != null ? esc(j.band) : esc(j.verdict || 'tasted')}</div><div class="sub">${esc(j.taster)}${j.where ? ' · ' + esc(j.where) : ''}</div></div>${scoreTag(j.score, j.verdict)}</div>${j.notes ? `<div style="margin-top:6px">${esc(j.notes)}</div>` : ''}${j.history ? `<div class="sub">${esc(j.history)}</div>` : ''}</div>`).join('')}` : ''}
-    ${inCellar || incoming ? `<button class="big ghost" onclick="location.hash='#/journal/new/${esc(code)}'">Rate this wine</button>` : ''}
+    ${(() => {
+      const rows = [
+        ['Paid', money(b.purchase_price, b.currency)],
+        ['Value', money(b.est_value, b.currency)],
+        ['Tags', b.tags ? b.tags.replace(/,/g, ' · ') : ''],
+        ['Notes', b.wine_notes],
+        ['In cellar', b.siblings_in_cellar > 1 ? `${b.siblings_in_cellar} bottles of this wine` : ''],
+      ].filter(([, v]) => v);
+      return rows.length ? `<h2>Details</h2><div class="card"><dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></div>` : '';
+    })()}
+    <h2 class="row">Journal <a href="#/journal/new/${esc(code)}" style="font-size:var(--fs-sub);font-weight:600;color:var(--wine);text-decoration:none">+ Add a tasting</a></h2>
+    ${b.journal.length ? b.journal.map(j => `<div class="card"><div class="row"><div class="col"><div class="title">${j.notes ? esc(j.notes) : esc(j.score != null ? (j.band || 'Tasted') : (j.verdict || 'Tasted'))}</div><div class="sub">${esc(j.taster || '')}${j.where ? ' · ' + esc(j.where) : ''}${j.history ? ' · ' + esc(j.history) : ''}</div></div>${scoreTag(j.score, j.verdict)}</div></div>`).join('') : '<div class="card empty" style="padding:14px">No tastings yet.</div>'}
     ${b.history.length ? '<h2>History</h2>' + b.history.map(h => `<div class="card"><div class="title">${h.reason === 'gift' ? 'Given to ' + esc(h.recipient) : 'Opened'}</div><div class="sub">${new Date(h.when).toLocaleDateString()}${h.occasion ? ' · ' + esc(h.occasion) : ''}${h.rating ? ' · ' + '★'.repeat(h.rating) : ''}</div>${h.note ? `<div>${esc(h.note)}</div>` : ''}</div>`).join('') : ''}`;
 }
 async function pickPerson(title, people, preset){
@@ -484,7 +486,7 @@ async function bottleMenu(){
   if (inCellar && b.location_code) opts.push({label: b.slot ? `Change the slot (now ${b.slot})` : 'Set the slot', value:'slot'});
   if ((inCellar || incoming) && !b.reserved_for) opts.push({label:'Hold for someone', sub:'Keeps it out of Tonight and suggestions', value:'hold'});
   if (inCellar || incoming) opts.push({label:'Print label', value:'print'});
-  opts.push({label:'Edit details', value:'edit'});
+  opts.push({label:'Edit details', sub:`Bottle code ${code}`, value:'edit'});
   if (inCellar) opts.push({label:'Delete…', sub:'For mistakes. Use Drink for bottles you opened.', value:'delete'});
   const pick = await choose(b.label, opts);
   if (pick === 'move') moveBottle(code);
@@ -501,11 +503,19 @@ async function bottleMenu(){
 }
 async function drink(code, heldFor){
   if (heldFor) { const ok = await choose(`This bottle is held for ${heldFor}. Open it anyway?`, [{label:'Open it anyway', value:true}]); if (!ok) return; }
+  let opened = false;
   await busy(document.getElementById('drinkBtn'), async () => {
     const r = await api(`bottle/${code}/drink`, {method:'POST', body:'{}'});
+    opened = true;
     toast(`Enjoy! Opened ${r.label}.`, 'Undo', async () => { await api(`bottle/${code}/undo`, {method:'POST'}); bottle(code); });
   });
-  bottle(code);
+  await bottle(code);
+  if (!opened) return;
+  const b = window.__bottle;
+  const score = await choose('How was it?', [95, 90, 85, 80, 70].map(v => ({label: String(v), sub: v >= 90 ? 'Exceptional' : v >= 86 ? 'Strong' : v >= 80 ? 'Good' : 'Drinkable', value: v})).concat([{label:'Rate it later', value:'later'}]));
+  if (typeof score === 'number') {
+    try { await api('journal', {method:'POST', body: JSON.stringify({wine: [b.producer, b.name].filter(Boolean).join(' '), vintage: b.vintage, score, bottle_code: code})}); toast(`Saved ${score} to the journal.`); bottle(code); } catch (e) { toast(e.message); }
+  }
 }
 async function giftBottle(code, heldFor){
   const b = await api('bottle/' + code);

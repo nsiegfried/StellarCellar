@@ -88,6 +88,7 @@ class Tasting(SQLModel, table=True):
     tasted_on: Optional[datetime] = None
     source: str = "manual"             # manual | import
     history: str = ""                  # e.g. "92 -> 90: earlier enthusiasm value-driven"
+    context: str = ""                  # import bookkeeping kept for reference, not shown
     created_at: datetime = Field(default_factory=utcnow)
 
 

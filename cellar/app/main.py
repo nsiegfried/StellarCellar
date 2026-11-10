@@ -52,6 +52,11 @@ async def lifespan(_app):
             session.add(holding)
             session.commit()
             session.refresh(holding)
+        # imported journal entries: the export's inventory notes are bookkeeping, not where it was tasted
+        for t in session.exec(select(Tasting).where(Tasting.source == "import", Tasting.where != "")).all():
+            t.context = (t.context + " " + t.where).strip() if t.context else t.where
+            t.where = ""
+            session.add(t)
         # bottles saved before the holding place existed ("Decide later" left them nowhere)
         for b in session.exec(select(Bottle).where(Bottle.location_id == None)).all():  # noqa: E711
             b.location_id = holding.id
