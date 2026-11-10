@@ -224,3 +224,26 @@ def test_fridge_layout_and_slots():
         # clearing the layout clears slots and kind
         r2 = client.post(f"/api/location/{loc['code']}/layout", json={"layout": None}).json()
         assert r2["layout"] is None and r2["kind"] == "shelf"
+
+
+def test_export_import_db():
+    import base64, os, tempfile
+    with TestClient(app) as client:
+        client.post("/api/bottles", json={"producer": "Export Me", "quantity": 3})
+        total = client.get("/api/summary").json()["total"]
+        exported = client.get("/api/export/db").content
+        assert exported[:15] == b"SQLite format 3"
+        # importing into a non-empty install is refused
+        r = client.post("/api/import/db", json={"db_base64": base64.b64encode(exported).decode()})
+        assert r.status_code == 409
+    # fresh empty install accepts it
+    os.environ["CELLAR_DATA_DIR"] = tempfile.mkdtemp()
+    import importlib
+    from app import db as dbmod, main as mainmod
+    importlib.reload(dbmod); importlib.reload(mainmod)
+    with TestClient(mainmod.app) as client2:
+        assert client2.get("/api/summary").json()["total"] == 0
+        r = client2.post("/api/import/db", json={"db_base64": base64.b64encode(exported).decode()}).json()
+        assert r["ok"] and r["bottles"] >= total   # raw rows include opened and gifted bottles
+        assert client2.get("/api/summary").json()["total"] == total
+        assert client2.post("/api/import/db", json={"db_base64": base64.b64encode(b"nope").decode()}).status_code in (400, 409)

@@ -841,6 +841,55 @@ def import_wine_profile(body: ImportBody, session: Session = Depends(get_session
     return report
 
 
+# ---------- backup: whole database in and out ----------
+
+@app.get("/api/export/db")
+def export_db():
+    """The SQLite file itself, for moving to a new install or keeping a copy."""
+    from .db import DB_PATH, engine
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+    return FileResponse(DB_PATH, media_type="application/octet-stream", filename="stellar-cellar.db")
+
+
+class ImportDbBody(BaseModel):
+    db_base64: str
+
+
+@app.post("/api/import/db")
+def import_db(body: ImportDbBody):
+    """Replace the database with an exported one. Only allowed while this install is empty."""
+    import base64
+    import sqlite3
+    from .db import DB_PATH, engine
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        n = conn.execute(text("SELECT COUNT(*) FROM bottle")).scalar()
+    if n:
+        raise HTTPException(409, f"This install already has {n} bottles. Import only into an empty install.")
+    raw = base64.b64decode(body.db_base64)
+    if raw[:16] != b"SQLite format 3\x00":
+        raise HTTPException(400, "That is not a SQLite database")
+    tmp = DB_PATH + ".incoming"
+    with open(tmp, "wb") as fh:
+        fh.write(raw)
+    try:
+        con = sqlite3.connect(tmp)
+        bottles = con.execute("SELECT COUNT(*) FROM bottle").fetchone()[0]
+        con.close()
+    except sqlite3.DatabaseError as exc:
+        os.remove(tmp)
+        raise HTTPException(400, f"Database could not be read ({exc})")
+    engine.dispose()
+    for suffix in ("", "-wal", "-shm"):
+        if os.path.exists(DB_PATH + suffix):
+            os.remove(DB_PATH + suffix)
+    os.replace(tmp, DB_PATH)
+    init_db()   # applies any newer columns to the imported file
+    return {"ok": True, "bottles": bottles}
+
+
 # ---------- settings ----------
 
 class SettingsBody(BaseModel):
