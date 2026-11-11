@@ -197,7 +197,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.17.3';
+const APP_VERSION = '0.17.4';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -350,7 +350,7 @@ async function tonight(){
   const wlInput = `<input type="file" id="wlHome" accept="image/*" capture="environment" style="display:none" onchange="startWineList(this.files[0])"><input type="file" id="wlLib" accept="image/*" style="display:none" onchange="startWineList(this.files[0])">`;
   const outCard = away
     ? `<div class="card hero" style="margin-top:4px"><div class="eyebrow">Out tonight?</div><div class="big">Photo the wine list</div><div class="where">Claude picks from what's on it, using Jen's taste and past scores.</div><div class="grid2"><button onclick="wlHome.click()">📷 Wine list</button><button class="ghost" onclick="location.hash='#/out'">Check a bottle</button></div><div style="text-align:center;margin-top:8px"><a href="javascript:void(0)" onclick="wlLib.click()" style="color:#fff;opacity:.85;font-size:var(--fs-sub)">or choose a photo you already took</a></div></div>`
-    : `<button class="big" style="margin:2px 0 4px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="wlHome.click()">📷 Photo a wine list</button><div style="text-align:center;margin:0 0 12px"><a href="javascript:void(0)" onclick="wlLib.click()" class="sub" style="color:var(--wine);font-weight:600;text-decoration:none">or choose a photo you already took</a></div>`;
+    : `<button class="big" style="margin:2px 0 4px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="wlHome.click()">📷 In the Streets? Show me the wine list</button><div style="text-align:center;margin:0 0 12px"><a href="javascript:void(0)" onclick="wlLib.click()" class="sub" style="color:var(--wine);font-weight:600;text-decoration:none">or choose a photo you already took</a></div>`;
   const heroHtml = hero ? `
     <div class="card hero">
       <div class="eyebrow">${evening ? "Tonight we'd open" : 'Ready to open'}</div>
