@@ -197,7 +197,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.17.4';
+const APP_VERSION = '0.17.5';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -301,7 +301,15 @@ const collapsed = (title, items, hash, empty) => items.length ? `<div class="car
 
 // ---------- Home ----------
 let sugg = {budget:null, occasion:''};
-const isAway = () => /nabu\.casa$/i.test(location.hostname) || !/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|[^.]+\.local$|homeassistant)/i.test(location.hostname);
+// Phones always come in through the Nabu Casa link, so where you are doesn't matter.
+// The one exception is a wall panel: local network, touch screen, wide. Settings can override per device.
+const isLocalHost = () => /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|[^.]+\.local$|homeassistant)/i.test(location.hostname);
+function isPanel(){
+  const o = localStorage.getItem('sc_panel');
+  if (o === 'yes') return true;
+  if (o === 'no') return false;
+  return isLocalHost() && window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(min-width: 700px)').matches;
+}
 const isWide = () => window.matchMedia('(min-width: 700px)').matches;
 function snoozed(key){ const t = Number(localStorage.getItem('sc_snooze_' + key) || 0); return Date.now() < t; }
 function snooze(key, hours = 20){ localStorage.setItem('sc_snooze_' + key, String(Date.now() + hours * 3600e3)); route(); }
@@ -344,13 +352,11 @@ async function tonight(){
   CUR = p.currency;
   const hero = p.under_high[0] || p.special[0] || p.under_low[0] || p.use_soon[0];
   const evening = new Date().getHours() >= 15;
-  const away = isAway();
+  const panel = isPanel();
   topbar('Home');
   const search = `<input id="hq" placeholder="Find a bottle or wine" oninput="homeSearch()" autocomplete="off"><div id="hres"></div>`;
   const wlInput = `<input type="file" id="wlHome" accept="image/*" capture="environment" style="display:none" onchange="startWineList(this.files[0])"><input type="file" id="wlLib" accept="image/*" style="display:none" onchange="startWineList(this.files[0])">`;
-  const outCard = away
-    ? `<div class="card hero" style="margin-top:4px"><div class="eyebrow">Out tonight?</div><div class="big">Photo the wine list</div><div class="where">Claude picks from what's on it, using Jen's taste and past scores.</div><div class="grid2"><button onclick="wlHome.click()">📷 Wine list</button><button class="ghost" onclick="location.hash='#/out'">Check a bottle</button></div><div style="text-align:center;margin-top:8px"><a href="javascript:void(0)" onclick="wlLib.click()" style="color:#fff;opacity:.85;font-size:var(--fs-sub)">or choose a photo you already took</a></div></div>`
-    : `<button class="big" style="margin:2px 0 4px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="wlHome.click()">📷 In the Streets? Show me the wine list</button><div style="text-align:center;margin:0 0 12px"><a href="javascript:void(0)" onclick="wlLib.click()" class="sub" style="color:var(--wine);font-weight:600;text-decoration:none">or choose a photo you already took</a></div>`;
+  const outCard = panel ? '' : `<button class="big" style="margin:2px 0 4px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="wlHome.click()">📷 In the Streets? Show me the wine list</button><div style="text-align:center;margin:0 0 12px"><a href="javascript:void(0)" onclick="wlLib.click()" class="sub" style="color:var(--wine);font-weight:600;text-decoration:none">or choose a photo you already took</a></div>`;
   const heroHtml = hero ? `
     <div class="card hero">
       <div class="eyebrow">${evening ? "Tonight we'd open" : 'Ready to open'}</div>
@@ -364,7 +370,7 @@ async function tonight(){
       <div class="chips">${['Weeknight','Guests','Special'].map(o => `<button class="chip ${sugg.occasion===o?'on':''}" onclick="setOcc('${o}', this)">${o}</button>`).join('')}</div>
       <button class="big" id="suggestBtn" onclick="recommend()">Suggest something else</button>
       <div id="recs"></div></div>`;
-  const actions = `<div class="grid3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px">
+  const actions = panel ? `<button class="ghost" style="width:100%;margin:4px 0 12px" onclick="location.hash='#/add'">＋ Add a bottle</button>` : `<div class="grid3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px">
       <button class="ghost" onclick="location.hash='#/scan'">📷<br><span style="font-size:var(--fs-sub)">Scan</span></button>
       <button class="ghost" onclick="location.hash='#/add'">＋<br><span style="font-size:var(--fs-sub)">Add a bottle</span></button>
       <button class="ghost" onclick="location.hash='#/out'">🏷️<br><span style="font-size:var(--fs-sub)">Check a bottle</span></button></div>`;
@@ -376,18 +382,17 @@ async function tonight(){
     <h2>Later</h2>
     ${collapsed('Use soon', p.use_soon, '#/list/drink_soon', 'nothing closing')}
     ${collapsed('Waiting to come of age', p.hold, '#/list/too_young', 'nothing waiting')}`;
-  // Order is fixed; only the evening/morning swap and the away card move things.
+  // Order is fixed; only the evening/morning swap moves things. Panels drop the camera actions.
   const main = [
-    wlInput,
-    away ? outCard : '',
+    panel ? '' : wlInput,
     search,
-    away ? '' : outCard,
+    outCard,
     needsCard(h),
     evening ? heroHtml + ask + actions : actions + heroHtml + ask,
     isWide() ? '' : glance,
     budgets,
   ].join('');
-  if (isWide() && h.fridge && h.fridge.laid_out) {
+  if ((panel || isWide()) && h.fridge && h.fridge.laid_out) {
     // Panels: the fridge is the hero on the left, everything else on the right.
     const loc = await api('location/' + h.fridge.code);
     view.innerHTML = `<div class="two"><div><h2 style="margin-top:6px">${esc(loc.name)} <span class="sub">${h.fridge.count} of ${h.fridge.capacity} · ${h.fridge.ready} ready</span></h2>${renderFridge(loc, {})}</div><div>${main}</div></div>`;
@@ -1410,6 +1415,9 @@ async function settings(){
   topbar('Settings', {back:'#/tonight', noGear:true});
   const large = document.documentElement.dataset.size === 'large';
   view.innerHTML = `
+    <div class="card"><label>Wall panel mode on this device</label>
+      <div class="segs">${['auto','yes','no'].map(v => `<button class="${(localStorage.getItem('sc_panel') || 'auto') === v ? 'on' : ''}" onclick="setPanel('${v}')">${{auto:'Automatic', yes:'Panel', no:'Phone or PC'}[v]}</button>`).join('')}</div>
+      <p class="sub" style="margin-bottom:0">Panels open on the fridge and hide camera actions. Automatic means a touch screen on your home network. This device is treated as ${isPanel() ? 'a wall panel' : 'a phone or computer'}.</p></div>
     <div class="card"><label>Text size on this device</label>
       <div class="segs"><button class="${large?'':'on'}" onclick="setSize('normal')">Normal</button><button class="${large?'on':''}" onclick="setSize('large')">Large</button></div>
       <label>Default place for new bottles</label>
@@ -1430,6 +1438,7 @@ async function loadPrinterCard(){
     : '<div class="sub">No network printer set. Add the Zebra\'s IP as zebra_host in the add-on configuration and labels will print straight from your phone.</div>';
 }
 async function testPrint(btn){ await busy(btn, async () => { try { await api('print/test', {method:'POST'}); toast('Test label sent.'); } catch (e) { toast(e.message); } }); }
+function setPanel(v){ if (v === 'auto') localStorage.removeItem('sc_panel'); else localStorage.setItem('sc_panel', v); settings(); }
 function setSize(s){ if (s === 'large') { document.documentElement.dataset.size = 'large'; localStorage.setItem('sc_size','large'); } else { delete document.documentElement.dataset.size; localStorage.removeItem('sc_size'); } settings(); }
 async function saveSettings(){
   await api('settings', {method:'POST', body: JSON.stringify({default_location_code: document.getElementById('defLoc').value, default_taster: document.getElementById('defTaster').value, taste_profile: document.getElementById('tasteProfile').value})});
