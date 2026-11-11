@@ -14,7 +14,8 @@
 html[data-size="large"]{--fs:22px;--fs-sub:19px;--fs-badge:15px;--fs-h:22px;--fs-title:26px;--nav-h:76px}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:var(--fs);line-height:1.35;background:var(--bg);color:var(--ink);padding-top:env(safe-area-inset-top)}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:var(--fs);line-height:1.35;background:var(--bg);color:var(--ink)}
+:root.unframed body{padding-top:env(safe-area-inset-top)}
 button{font:inherit;border:0;border-radius:14px;padding:14px 18px;cursor:pointer;background:var(--wine);color:#fff;font-weight:600;min-height:48px}
 button.ghost{background:transparent;color:var(--wine);border:1.5px solid var(--line)}
 button.danger{background:transparent;color:var(--bad);border:1.5px solid var(--line)}
@@ -166,7 +167,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 @media(min-width:700px){
   :root{--fs:20px;--fs-sub:17px;--fs-badge:14px;--fs-h:20px;--fs-title:24px}
   body{padding-left:120px}
-  nav{top:0;bottom:0;left:0;right:auto;width:120px;height:auto;flex-direction:column;justify-content:flex-start;gap:6px;padding:calc(18px + env(safe-area-inset-top)) 8px;border-top:0;border-right:1px solid var(--line)}
+  nav{top:0;bottom:0;left:0;right:auto;width:120px;height:auto;flex-direction:column;justify-content:flex-start;gap:6px;padding:18px 8px;border-top:0;border-right:1px solid var(--line)}
   nav a{flex:none;padding:14px 0;border-radius:12px;width:100%}
   nav a.on{background:var(--wine-soft)}
   nav a svg{width:30px;height:30px}
@@ -176,9 +177,12 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
   .two > div{min-width:0}
   nav a.scan.hidewide{display:none}
 }
+:root.unframed nav{padding-top:calc(18px + env(safe-area-inset-top))}
+@media (max-width:699px){:root.unframed nav{padding-top:0}}
 </style>
 </head>
 <body>
+<script>try { if (window.top === window.self) document.documentElement.classList.add('unframed'); } catch (_) { /* cross-origin parent: framed */ }</script>
 <div id="top"></div>
 <main id="view"></main>
 <nav>
@@ -193,7 +197,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.17.0';
+const APP_VERSION = '0.17.1';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
