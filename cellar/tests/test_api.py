@@ -281,3 +281,16 @@ def test_map_and_region_apply():
         assert pin["count"] >= 2 and abs(pin["lat"] - 35.63) < 0.01 and pin["precision"] == "region"
         a = client.get("/api/region-about?region=Paso%20Robles&country=USA").json()
         assert a["precision"] == "region"   # about text is empty without an API key, coordinates still resolve
+
+
+def test_home_rate_and_glance():
+    with TestClient(app) as client:
+        r = client.post("/api/bottles", json={"producer": "HomeTest", "quantity": 2}).json()
+        h = client.get("/api/home").json()
+        assert h["arrivals"] >= 2 and h["fridge"] is not None and "total" in h
+        client.post(f"/api/bottle/{r['codes'][0]}/drink", json={})
+        h2 = client.get("/api/home").json()
+        assert h2["rate"] and h2["rate"]["code"] == r["codes"][0]
+        client.post("/api/journal", json={"wine": "HomeTest", "score": 88, "bottle_code": r["codes"][1]})
+        assert client.get("/api/home").json()["rate"] is None   # rated, so the nudge goes away
+        assert client.post("/api/winelist", json={"image": "QUJD", "media_type": "image/gif"}).status_code == 400

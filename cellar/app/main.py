@@ -881,6 +881,70 @@ def import_wine_profile(body: ImportBody, session: Session = Depends(get_session
     return report
 
 
+# ---------- home ----------
+
+@app.get("/api/home")
+def home(session: Session = Depends(get_session)):
+    """Everything the Home screen needs in one call: the one nudge worth showing, and the fridge glance."""
+    now = utcnow()
+    # a bottle opened in the last two days that nobody has rated yet
+    rate = None
+    recent = session.exec(select(Consumption).where(Consumption.reason == "drank", Consumption.undone == False)  # noqa: E712
+                          .order_by(Consumption.occurred_at.desc())).first()
+    if recent:
+        opened = recent.occurred_at if recent.occurred_at.tzinfo else recent.occurred_at.replace(tzinfo=now.tzinfo)
+        if (now - opened).total_seconds() < 48 * 3600:
+            b = session.get(Bottle, recent.bottle_id)
+            if b:
+                rated = session.exec(select(Tasting).where(Tasting.wine_id == b.wine_id)).all()
+                if not any(((t.created_at if t.created_at.tzinfo else t.created_at.replace(tzinfo=now.tzinfo)) >= opened)
+                           for t in rated):
+                    rate = {"code": b.code, "label": wine_label(session.get(Wine, b.wine_id)),
+                            "opened": opened.isoformat()}
+    holding = session.exec(select(Location).where(Location.code == HOLDING_CODE)).first()
+    arrivals = len(session.exec(select(Bottle).where(Bottle.location_id == holding.id, Bottle.status == "in_cellar")).all()) if holding else 0
+    incoming = session.exec(select(Bottle).where(Bottle.status == "incoming")).all()
+    cands = [candidate(session, b) for b in in_cellar(session)]
+    soon = sum(1 for c in cands if c["status"] == "drink_soon")
+    ready = sum(1 for c in cands if c["status"] in ("ready", "drink_soon"))
+    # the fridge glance: the laid-out place with the most bottles, else the biggest place
+    places = []
+    for loc in session.exec(select(Location)).all():
+        here = [c for c in cands if c["location_code"] == loc.code]
+        places.append({"code": loc.code, "name": loc.name, "count": len(here), "capacity": layout_capacity(loc),
+                       "ready": sum(1 for c in here if c["status"] in ("ready", "drink_soon")),
+                       "laid_out": bool(loc.layout), "holding": loc.code == HOLDING_CODE})
+    laid = sorted([p for p in places if p["laid_out"]], key=lambda p: -p["count"])
+    other = sorted([p for p in places if not p["holding"]], key=lambda p: -p["count"])
+    fridge = (laid or other or [None])[0]
+    return {"rate": rate, "arrivals": arrivals, "holding_code": HOLDING_CODE,
+            "incoming": len(incoming), "drink_soon": soon, "ready": ready, "total": len(cands),
+            "fridge": fridge}
+
+
+class WineListBody(BaseModel):
+    image: str
+    media_type: str = "image/jpeg"
+    food: str = ""
+    budget_max: Optional[float] = None
+
+
+@app.post("/api/winelist")
+def winelist(body: WineListBody, session: Session = Depends(get_session)):
+    if body.media_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(400, "Send a JPEG, PNG or WebP image")
+    if len(body.image) > 9_000_000:
+        raise HTTPException(413, "Image too large")
+    journal = [{"wine": t.wine_text, "score": t.score, "verdict": t.verdict}
+               for t in session.exec(select(Tasting).order_by(Tasting.score.desc().nullslast())).all()]
+    cellar = sorted({candidate(session, b)["label"] for b in in_cellar(session)})
+    out, err = ai.read_winelist(body.image, body.media_type, body.food, body.budget_max,
+                                get_setting(session, "taste_profile"), journal, cellar)
+    if err:
+        raise HTTPException(503, err)
+    return out
+
+
 # ---------- map ----------
 
 @app.get("/api/map")

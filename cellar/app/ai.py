@@ -194,3 +194,38 @@ def about_region(region: str, country: str):
         return "".join(getattr(b, "text", "") for b in resp.content).strip()[:600]
     except Exception:
         return None
+
+
+WINELIST_SYSTEM = (
+    "You help a couple choose wine at a restaurant from a photo of the wine list. Read every wine you can see "
+    "with its price. Recommend up to 3 that best fit their taste profile, past ratings and budget, and name up to "
+    "2 to avoid. Quote each wine's line from the list exactly as printed and its price exactly; never invent wines, "
+    "vintages or prices. If a wine on the list matches one in their journal or cellar, say so. Respond with JSON only, "
+    'no prose and no code fences: {"summary": "one sentence", "picks": [{"line": "", "price": "", "reason": "under 25 '
+    'words", "journal": "their past score or verdict if this wine is in the journal, else empty", "owned": true|false}], '
+    '"avoid": [{"line": "", "reason": "under 15 words"}], "unreadable": false}'
+)
+
+
+def read_winelist(image_b64, media_type, food, budget, taste_profile, journal, cellar):
+    client = _client()
+    if not client:
+        return None, "Reading a wine list needs an Anthropic API key in the add-on options."
+    context = {"food": food, "budget_max_per_bottle": budget, "taste_profile": (taste_profile or "")[:3000],
+               "journal": journal[:80], "cellar": cellar[:80]}
+    try:
+        resp = client.messages.create(
+            model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=4000, system=WINELIST_SYSTEM,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
+                {"type": "text", "text": json.dumps(context)}]}])
+        data = _json_reply("".join(getattr(b, "text", "") for b in resp.content))
+    except Exception as exc:
+        return None, f"Could not read the list ({type(exc).__name__}). Try a closer, flatter photo."
+    clean = lambda s, n: str(s or "")[:n]
+    return {"summary": clean(data.get("summary"), 300), "unreadable": bool(data.get("unreadable")),
+            "picks": [{"line": clean(p.get("line"), 160), "price": clean(p.get("price"), 20),
+                       "reason": clean(p.get("reason"), 220), "journal": clean(p.get("journal"), 80),
+                       "owned": bool(p.get("owned"))} for p in (data.get("picks") or [])[:3]],
+            "avoid": [{"line": clean(a.get("line"), 160), "reason": clean(a.get("reason"), 140)}
+                      for a in (data.get("avoid") or [])[:2]]}, None

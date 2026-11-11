@@ -182,7 +182,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <div id="top"></div>
 <main id="view"></main>
 <nav>
-  <a href="#/tonight" data-tab="tonight"><svg viewBox="0 0 24 24"><path d="M8 3h8l-1 7a3 3 0 0 1-6 0z"/><path d="M12 13v6M8 21h8"/></svg>Tonight</a>
+  <a href="#/tonight" data-tab="tonight"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/></svg>Home</a>
   <a href="#/cellar" data-tab="cellar"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/></svg>Cellar</a>
   <a href="#/scan" class="scan hidewide" data-tab="scan"><span class="ring"><svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="8" y="8" width="3" height="3"/><rect x="13" y="8" width="3" height="3"/><rect x="8" y="13" width="3" height="3"/><path d="M13 13h3v3"/></svg></span>Scan</a>
   <a href="#/journal" data-tab="journal"><svg viewBox="0 0 24 24"><path d="M4 4h12a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2z"/><path d="M8 4v16M18 8h2v12h-2"/></svg>Journal</a>
@@ -193,7 +193,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.16.2';
+const APP_VERSION = '0.17.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -295,48 +295,147 @@ const bottleRow = c => `
 const section = (title, items, empty) => `<h2>${title}${items.length ? ` <span class="sub">${items.length}</span>` : ''}</h2>` + (items.length ? items.map(bottleRow).join('') : `<div class="card empty">${empty}</div>`);
 const collapsed = (title, items, hash, empty) => items.length ? `<div class="card tap row" onclick="location.hash='${hash}'"><div class="title">${title}</div><div class="sub">${items.length} wine${items.length===1?'':'s'} ›</div></div>` : `<div class="card row"><div class="title" style="color:var(--muted)">${title}</div><div class="sub">${empty}</div></div>`;
 
-// ---------- Tonight ----------
+// ---------- Home ----------
 let sugg = {budget:null, occasion:''};
+const isAway = () => /nabu\.casa$/i.test(location.hostname) || !/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|[^.]+\.local$|homeassistant)/i.test(location.hostname);
+const isWide = () => window.matchMedia('(min-width: 700px)').matches;
+function snoozed(key){ const t = Number(localStorage.getItem('sc_snooze_' + key) || 0); return Date.now() < t; }
+function snooze(key, hours = 20){ localStorage.setItem('sc_snooze_' + key, String(Date.now() + hours * 3600e3)); route(); }
+
+function needsCard(h){
+  // At most one nudge, in priority order.
+  if (h.rate && !snoozed('rate_' + h.rate.code)) return `<div class="card" style="border-color:var(--wine)">
+      <div class="title">How was the ${esc(h.rate.label)}?</div><div class="sub">Opened ${new Date(h.rate.opened).toLocaleDateString(undefined,{weekday:'long'})}. One tap saves it to the journal.</div>
+      <div class="chips" style="margin:10px 0 4px">${[95,90,85,80,70].map(v => `<button class="chip" onclick="quickRate('${esc(h.rate.code)}',${v},this)">${v}</button>`).join('')}</div>
+      <div class="row"><a href="#/journal/new/${esc(h.rate.code)}" class="sub" style="color:var(--wine);text-decoration:none;font-weight:600">Add notes instead ›</a><button class="ghost" style="min-height:36px;padding:6px 12px;border:0" onclick="snooze('rate_${esc(h.rate.code)}')">Not now</button></div></div>`;
+  if (h.arrivals > 0 && !snoozed('arrivals')) return `<div class="card row"><div class="col"><div class="title">${h.arrivals} bottle${h.arrivals === 1 ? '' : 's'} waiting to be shelved</div><div class="sub">They're in New arrivals. Give each a spot so you can find it.</div></div></div>
+      <div class="grid2" style="margin:-4px 0 10px"><button onclick="location.hash='#/location/${esc(h.holding_code)}'">Shelve them</button><button class="ghost" onclick="snooze('arrivals')">Not now</button></div>`;
+  if (h.incoming > 0 && !snoozed('incoming')) return `<div class="card tap row" onclick="location.hash='#/cellar'"><div class="col"><div class="title">${h.incoming} bottle${h.incoming === 1 ? '' : 's'} on order</div><div class="sub">Did any arrive? Mark them in Cellar → On order.</div></div><button class="ghost" style="min-height:36px;padding:6px 12px;border:0" onclick="event.stopPropagation();snooze('incoming', 72)">Not now</button></div>`;
+  if (h.drink_soon > 0 && !snoozed('soon')) return `<div class="card tap row" onclick="location.hash='#/list/drink_soon'"><div class="col"><div class="title">${h.drink_soon} bottle${h.drink_soon === 1 ? '' : 's'} closing their window</div><div class="sub">Worth opening in the next few months.</div></div><span class="sub">›</span></div>`;
+  return '';
+}
+async function quickRate(code, score, el){
+  el.parentElement.querySelectorAll('.chip').forEach(c => c.disabled = true);
+  try { const b = await api('bottle/' + code); await api('journal', {method:'POST', body: JSON.stringify({wine: [b.producer, b.name].filter(Boolean).join(' '), vintage: b.vintage, score, bottle_code: code})}); toast(`Saved ${score} for ${b.label}.`); route(); }
+  catch (e) { toast(e.message); }
+}
+
+let hs;
+function homeSearch(){
+  clearTimeout(hs);
+  hs = setTimeout(async () => {
+    const q = document.getElementById('hq').value.trim(), box = document.getElementById('hres');
+    if (!q) { box.innerHTML = ''; return; }
+    const [bottles, journal] = await Promise.all([api('search?q=' + encodeURIComponent(q)), api('journal?q=' + encodeURIComponent(q))]);
+    const groups = {}; bottles.forEach(c => { (groups[c.label] = groups[c.label] || {...c, count:0}).count++; });
+    const owned = Object.values(groups);
+    box.innerHTML = (owned.length ? `<h2>In your cellar <span class="sub">${bottles.length}</span></h2>${owned.map(bottleRow).join('')}` : '')
+      + (journal.length ? `<h2>In the journal <span class="sub">${journal.length}</span></h2>${journal.slice(0, 6).map(t => `<div class="card row"><div class="col"><div class="title">${esc(t.wine)}${t.vintage ? ' ' + t.vintage : ''}</div><div class="sub">${esc(t.taster || '')}${t.notes ? ' · ' + esc(t.notes) : ''}</div></div>${scoreTag(t.score, t.verdict || 'tasted')}</div>`).join('')}` : '')
+      || '<div class="card empty">Nothing in the cellar or journal matches.</div>';
+  }, 250);
+}
+
 async function tonight(){
-  const [p, s] = await Promise.all([api('picks'), api('summary')]);
+  const [p, h] = await Promise.all([api('picks'), api('home')]);
   CUR = p.currency;
   const hero = p.under_high[0] || p.special[0] || p.under_low[0] || p.use_soon[0];
-  topbar('Tonight');
+  const evening = new Date().getHours() >= 15;
+  const away = isAway();
+  topbar('Home');
+  const search = `<input id="hq" placeholder="Find a bottle or wine" oninput="homeSearch()" autocomplete="off"><div id="hres"></div>`;
+  const outCard = `<div class="card tap row" style="border-color:var(--wine)" onclick="location.hash='#/out'"><div class="col"><div class="title">🍽️ Out tonight?</div><div class="sub">Photo the wine list for picks, or check a bottle against the journal.</div></div><span class="sub">›</span></div>`;
   const heroHtml = hero ? `
     <div class="card hero">
-      <div class="eyebrow">Tonight we'd open</div>
+      <div class="eyebrow">${evening ? "Tonight we'd open" : 'Ready to open'}</div>
       <div class="big">${esc(hero.label)}</div>
-      <div class="where">${esc(hero.location)}${hero.price != null ? ' · ' + money(hero.price, CUR) : ''}${hero.score != null ? ' · ' + hero.score + ' points' : ''} · ${STATUS[hero.status]}</div>
+      <div class="where">${esc(hero.location)}${hero.slot ? ' · ' + esc(hero.slot) : ''}${hero.price != null ? ' · ' + money(hero.price, CUR) : ''}${hero.score != null ? ' · ' + hero.score + ' points' : ''}</div>
       <div class="grid2"><button onclick="location.hash='#/bottle/${esc(hero.code)}'">Open this</button><button class="ghost" onclick="${hero.location_code ? `location.hash='#/location/${esc(hero.location_code)}/find/${esc(hero.code)}'` : `document.getElementById('food').focus()`}">${hero.location_code ? 'Show me where' : 'Something else'}</button></div>
-    </div>` : s.total === 0 ? `<div class="card hero"><div class="big">Welcome to your cellar</div><div class="where">Add your first bottle: tap Scan and photograph the label.</div><button onclick="location.hash='#/add'">Add a bottle</button></div>` : '';
-  const left = `
-    ${heroHtml}
-    <div class="summary">
-      <div class="card tap" onclick="location.hash='#/list/all'"><div class="n">${s.total}</div><div class="sub">bottles ›</div></div>
-      <div class="card tap" onclick="location.hash='#/list/ready'"><div class="n">${s.ready}</div><div class="sub">ready ›</div></div>
-      <div class="card tap" onclick="location.hash='#/list/drink_soon'"><div class="n">${s.drink_soon}</div><div class="sub">drink soon ›</div></div>
-    </div>
-    <h2>Ask for a suggestion</h2>
-    <div class="card">
+    </div>` : h.total === 0 ? `<div class="card hero"><div class="big">Welcome to your cellar</div><div class="where">Add your first bottle: tap Scan and photograph the label.</div><button onclick="location.hash='#/add'">Add a bottle</button></div>` : '';
+  const ask = `<div class="card">
       <input id="food" placeholder="What are we eating?">
-      <div class="chips" id="budgetChips">
-        ${[['Any budget',null],['Under ' + money(p.thresholds.low,CUR), p.thresholds.low],['Under ' + money(p.thresholds.high,CUR), p.thresholds.high]].map(([l,v]) => `<button class="chip ${sugg.budget===v?'on':''}" onclick="setBudget(${v===null?'null':v}, this)">${l}</button>`).join('')}
-      </div>
-      <div class="chips" id="occChips">
-        ${['Weeknight','Guests','Special'].map(o => `<button class="chip ${sugg.occasion===o?'on':''}" onclick="setOcc('${o}', this)">${o}</button>`).join('')}
-      </div>
-      <button class="big" id="suggestBtn" onclick="recommend()">Suggest</button>
-      <div id="recs"></div>
-    </div>`;
-  const right = `
+      <div class="chips">${[['Any budget',null],['Under ' + money(p.thresholds.low,CUR), p.thresholds.low],['Under ' + money(p.thresholds.high,CUR), p.thresholds.high]].map(([l,v]) => `<button class="chip ${sugg.budget===v?'on':''}" onclick="setBudget(${v===null?'null':v}, this)">${l}</button>`).join('')}</div>
+      <div class="chips">${['Weeknight','Guests','Special'].map(o => `<button class="chip ${sugg.occasion===o?'on':''}" onclick="setOcc('${o}', this)">${o}</button>`).join('')}</div>
+      <button class="big" id="suggestBtn" onclick="recommend()">Suggest something else</button>
+      <div id="recs"></div></div>`;
+  const actions = `<div class="grid3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px">
+      <button class="ghost" onclick="location.hash='#/scan'">📷<br><span style="font-size:var(--fs-sub)">Scan</span></button>
+      <button class="ghost" onclick="location.hash='#/add'">＋<br><span style="font-size:var(--fs-sub)">Add a bottle</span></button>
+      <button class="ghost" onclick="location.hash='#/out'">🍽️<br><span style="font-size:var(--fs-sub)">Out tonight?</span></button></div>`;
+  const glance = h.fridge ? `<div class="card tap row" onclick="location.hash='#/location/${esc(h.fridge.code)}'"><div class="col"><div class="title">${esc(h.fridge.name)}</div><div class="meta"><span>${h.fridge.count}${h.fridge.capacity ? ' of ' + h.fridge.capacity : ''} bottles</span><span>${h.fridge.ready} ready</span>${h.drink_soon ? `<span>${h.drink_soon} drink soon</span>` : ''}</div></div><span class="sub">›</span></div>` : '';
+  const budgets = `<h2>By budget</h2>
     ${section('Under ' + money(p.thresholds.low,CUR), p.under_low, 'No priced bottles in this range are ready.')}
     ${section('Under ' + money(p.thresholds.high,CUR), p.under_high, 'No priced bottles in this range are ready.')}
     ${section('Special occasion', p.special, 'Mark a wine as special, or add one over ' + money(p.thresholds.high,CUR) + '.')}
     <h2>Later</h2>
     ${collapsed('Use soon', p.use_soon, '#/list/drink_soon', 'nothing closing')}
     ${collapsed('Waiting to come of age', p.hold, '#/list/too_young', 'nothing waiting')}`;
-  view.innerHTML = `<div class="two"><div>${left}</div><div>${right}</div></div>`;
+  // Order is fixed; only the evening/morning swap and the away card move things.
+  const main = [
+    search,
+    away ? outCard : '',
+    needsCard(h),
+    evening ? heroHtml + ask + actions : actions + heroHtml + ask,
+    isWide() ? '' : glance,
+    budgets,
+  ].join('');
+  if (isWide() && h.fridge && h.fridge.laid_out) {
+    // Panels: the fridge is the hero on the left, everything else on the right.
+    const loc = await api('location/' + h.fridge.code);
+    view.innerHTML = `<div class="two"><div><h2 style="margin-top:6px">${esc(loc.name)} <span class="sub">${h.fridge.count} of ${h.fridge.capacity} · ${h.fridge.ready} ready</span></h2>${renderFridge(loc, {})}</div><div>${main}</div></div>`;
+    document.getElementById('fridge')?.classList.add('open');
+  } else {
+    view.innerHTML = main;
+  }
 }
+
+// ---------- Out tonight ----------
+async function outPage(){
+  const p = await api('picks');
+  topbar('Out tonight', {back:'#/tonight', noGear:true});
+  view.innerHTML = `
+    <input type="file" id="wlFile" accept="image/*" capture="environment" style="display:none" onchange="readWineList(this.files[0])">
+    <input type="file" id="ckFile" accept="image/*" capture="environment" style="display:none" onchange="checkBottle(this.files[0])">
+    <div class="card"><div class="title">At a restaurant</div><p class="sub" style="margin:4px 0 10px">Photograph the wine list. Claude picks from what's on it, using Jen's taste profile and past scores.</p>
+      <input id="wlFood" placeholder="What are you eating? (optional)">
+      <div class="chips" id="wlBudget">${[['Any',null],['Under $75',75],['Under $100',100],['Under $150',150]].map(([l,v],i) => `<button class="chip ${i===0?'on':''}" data-v="${v===null?'':v}" onclick="this.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${l}</button>`).join('')}</div>
+      <button class="big" onclick="wlFile.click()">📷 Photo the wine list</button></div>
+    <div class="card"><div class="title">At a store or a friend's</div><p class="sub" style="margin:4px 0 10px">Photograph a bottle's label to see if you've had it, own it, or should buy it.</p>
+      <button class="big ghost" onclick="ckFile.click()">📷 Check a bottle</button></div>
+    <div id="outRes"></div>`;
+}
+async function readWineList(file){
+  if (!file) return;
+  const box = document.getElementById('outRes'); box.innerHTML = '<div class="card empty">Reading the list…</div>';
+  const bv = document.querySelector('#wlBudget .chip.on')?.dataset.v;
+  try {
+    const image = await downsize(file, 2200);
+    const r = await api('winelist', {method:'POST', body: JSON.stringify({image, media_type:'image/jpeg', food: document.getElementById('wlFood').value, budget_max: bv ? Number(bv) : null})});
+    if (r.unreadable && !r.picks.length) { box.innerHTML = '<div class="card empty">Couldn\'t read that list. Try again closer, flat, and with good light.</div>'; return; }
+    box.innerHTML = `<h2>Picks</h2>${r.summary ? `<p>${esc(r.summary)}</p>` : ''}
+      ${r.picks.map((x, i) => `<div class="card"><div class="row"><div class="col"><div class="title">${i + 1}. ${esc(x.line)}</div><div class="meta"><span><b>${esc(x.price)}</b></span>${x.journal ? `<span>Journal: ${esc(x.journal)}</span>` : ''}${x.owned ? '<span>You own this at home</span>' : ''}</div><div style="margin-top:6px">${esc(x.reason)}</div></div></div>
+        <button class="ghost" style="width:100%;margin-top:8px;min-height:40px" onclick="sessionStorage.setItem('prefillWine', ${esc(JSON.stringify(x.line)).replace(/"/g,'&quot;')});location.hash='#/journal/new'">We ordered this: rate it</button></div>`).join('')}
+      ${r.avoid.length ? `<h2>Skip</h2>${r.avoid.map(a => `<div class="card"><div class="title">${esc(a.line)}</div><div class="sub">${esc(a.reason)}</div></div>`).join('')}` : ''}`;
+  } catch (e) { if (e.session) return sessionEnded(); box.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; }
+}
+async function checkBottle(file){
+  if (!file) return;
+  const box = document.getElementById('outRes'); box.innerHTML = '<div class="card empty">Reading the label…</div>';
+  try {
+    const image = await downsize(file);
+    const d = await api('scan-label', {method:'POST', body: JSON.stringify({image, media_type:'image/jpeg'})});
+    const name = [d.producer, d.name].filter(Boolean).join(' ');
+    const q = d.producer || name;
+    const [owned, journal] = await Promise.all([api('search?q=' + encodeURIComponent(q)), api('journal?q=' + encodeURIComponent(q))]);
+    const best = journal.find(t => t.score != null);
+    const verdict = best ? (best.score >= 90 ? 'You loved this one' : best.score >= 80 ? 'You liked it' : best.score >= 70 ? 'It was just OK' : 'You didn\'t like it') : (journal.find(t => t.verdict === 'dislike') ? 'You didn\'t like it' : journal.length ? 'You\'ve had it' : 'New to you');
+    box.innerHTML = `<div class="card"><div class="title" style="font-size:var(--fs-title)">${esc(name)}${d.vintage ? ' ' + d.vintage : ''}</div><div class="sub">${esc([d.region, d.country].filter(Boolean).join(', '))}${d.varietals.length ? ' · ' + esc(d.varietals.join(', ')) : ''}</div>
+      <div class="meta" style="margin:10px 0"><span><b>${verdict}</b></span>${best ? scoreTag(best.score) : ''}${owned.length ? `<span>${owned.length} at home</span>` : ''}</div>
+      ${journal.slice(0, 3).map(t => `<div class="sub">${esc(t.wine)}${t.vintage ? ' ' + t.vintage : ''}${t.score != null ? ' · ' + t.score : ''}${t.notes ? ' · ' + esc(t.notes) : ''}</div>`).join('')}
+      <div class="grid2" style="margin-top:12px"><button class="ghost" onclick="addWishFrom(${esc(JSON.stringify(name + (d.vintage ? ' ' + d.vintage : ''))).replace(/"/g,'&quot;')})">Add to wish list</button><button class="ghost" onclick="sessionStorage.setItem('prefillWine', ${esc(JSON.stringify(name)).replace(/"/g,'&quot;')});location.hash='#/journal/new'">Rate it</button></div></div>`;
+  } catch (e) { if (e.session) return sessionEnded(); box.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; }
+}
+async function addWishFrom(wine){ await api('wishlist', {method:'POST', body: JSON.stringify({wine})}); toast('Added to the wish list.'); }
+
 function setBudget(v, el){ sugg.budget = v; el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); el.classList.add('on'); }
 function setOcc(o, el){ sugg.occasion = sugg.occasion === o ? '' : o; el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('on')); if (sugg.occasion) el.classList.add('on'); }
 async function recommend(){
@@ -1238,6 +1337,7 @@ function quickScore(v, el){ document.getElementById('ts').value = v; el.parentEl
 async function journalNew(code){
   let pre = {};
   if (code) { const b = await api('bottle/' + code); pre = {wine: b.producer + (b.name ? ' ' + b.name : ''), vintage: b.vintage}; }
+  else if (sessionStorage.getItem('prefillWine')) { pre = {wine: sessionStorage.getItem('prefillWine')}; sessionStorage.removeItem('prefillWine'); }
   const st = await api('settings');
   topbar('Add a tasting', {back: code ? '#/bottle/' + code : '#/journal', noGear:true});
   view.innerHTML = `
@@ -1300,7 +1400,7 @@ async function saveSettings(){
 }
 
 // ---------- Router ----------
-const TAB_FOR = {map:'cellar', regions:'cellar', list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
+const TAB_FOR = {out:'tonight', home:'tonight', map:'cellar', regions:'cellar', list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
 window.addEventListener('hashchange', () => {
   const s = window.__stack, cur = location.hash || '#/tonight';
   if (window.__replacing) { s[s.length - 1] = cur; window.__replacing = false; }
@@ -1327,6 +1427,7 @@ async function route(){
     else if (page === 'held') await heldPage();
     else if (page === 'map') await mapPage(arg === 'r' ? location.hash.split('/').slice(3).join('/') : null);
     else if (page === 'regions') await regionsPage();
+    else if (page === 'out') await outPage();
     else if (page === 'gifts') await giftsPage();
     else if (page === 'list') await statusList(arg || 'all');
     else if (page === 'journal' && arg === 'new') await journalNew(location.hash.split('/')[3] ? location.hash.split('/')[3].toUpperCase() : null);
