@@ -197,7 +197,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.17.1';
+const APP_VERSION = '0.17.2';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -347,7 +347,10 @@ async function tonight(){
   const away = isAway();
   topbar('Home');
   const search = `<input id="hq" placeholder="Find a bottle or wine" oninput="homeSearch()" autocomplete="off"><div id="hres"></div>`;
-  const outCard = `<div class="card tap row" style="border-color:var(--wine)" onclick="location.hash='#/out'"><div class="col"><div class="title">🍽️ Out tonight?</div><div class="sub">Photo the wine list for picks, or check a bottle against the journal.</div></div><span class="sub">›</span></div>`;
+  const wlInput = `<input type="file" id="wlHome" accept="image/*" capture="environment" style="display:none" onchange="startWineList(this.files[0])">`;
+  const outCard = away
+    ? `<div class="card hero" style="margin-top:4px"><div class="eyebrow">Out tonight?</div><div class="big">Photo the wine list</div><div class="where">Claude picks from what's on it, using Jen's taste and past scores.</div><div class="grid2"><button onclick="wlHome.click()">📷 Wine list</button><button class="ghost" onclick="location.hash='#/out'">Check a bottle</button></div></div>`
+    : `<button class="big" style="margin:2px 0 12px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="wlHome.click()">📷 Photo a wine list</button>`;
   const heroHtml = hero ? `
     <div class="card hero">
       <div class="eyebrow">${evening ? "Tonight we'd open" : 'Ready to open'}</div>
@@ -364,7 +367,7 @@ async function tonight(){
   const actions = `<div class="grid3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px">
       <button class="ghost" onclick="location.hash='#/scan'">📷<br><span style="font-size:var(--fs-sub)">Scan</span></button>
       <button class="ghost" onclick="location.hash='#/add'">＋<br><span style="font-size:var(--fs-sub)">Add a bottle</span></button>
-      <button class="ghost" onclick="location.hash='#/out'">🍽️<br><span style="font-size:var(--fs-sub)">Out tonight?</span></button></div>`;
+      <button class="ghost" onclick="location.hash='#/out'">🏷️<br><span style="font-size:var(--fs-sub)">Check a bottle</span></button></div>`;
   const glance = h.fridge ? `<div class="card tap row" onclick="location.hash='#/location/${esc(h.fridge.code)}'"><div class="col"><div class="title">${esc(h.fridge.name)}</div><div class="meta"><span>${h.fridge.count}${h.fridge.capacity ? ' of ' + h.fridge.capacity : ''} bottles</span><span>${h.fridge.ready} ready</span>${h.drink_soon ? `<span>${h.drink_soon} drink soon</span>` : ''}</div></div><span class="sub">›</span></div>` : '';
   const budgets = `<h2>By budget</h2>
     ${section('Under ' + money(p.thresholds.low,CUR), p.under_low, 'No priced bottles in this range are ready.')}
@@ -375,8 +378,10 @@ async function tonight(){
     ${collapsed('Waiting to come of age', p.hold, '#/list/too_young', 'nothing waiting')}`;
   // Order is fixed; only the evening/morning swap and the away card move things.
   const main = [
-    search,
+    wlInput,
     away ? outCard : '',
+    search,
+    away ? '' : outCard,
     needsCard(h),
     evening ? heroHtml + ask + actions : actions + heroHtml + ask,
     isWide() ? '' : glance,
@@ -397,23 +402,50 @@ async function outPage(){
   const p = await api('picks');
   topbar('Out tonight', {back:'#/tonight', noGear:true});
   view.innerHTML = `
-    <input type="file" id="wlFile" accept="image/*" capture="environment" style="display:none" onchange="readWineList(this.files[0])">
+    <input type="file" id="wlFile" accept="image/*" capture="environment" style="display:none" onchange="startWineList(this.files[0])">
     <input type="file" id="ckFile" accept="image/*" capture="environment" style="display:none" onchange="checkBottle(this.files[0])">
-    <div class="card"><div class="title">At a restaurant</div><p class="sub" style="margin:4px 0 10px">Photograph the wine list. Claude picks from what's on it, using Jen's taste profile and past scores.</p>
-      <input id="wlFood" placeholder="What are you eating? (optional)">
-      <div class="chips" id="wlBudget">${[['Any',null],['Under $75',75],['Under $100',100],['Under $150',150]].map(([l,v],i) => `<button class="chip ${i===0?'on':''}" data-v="${v===null?'':v}" onclick="this.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${l}</button>`).join('')}</div>
+    <div class="card"><div class="title">At a restaurant</div><p class="sub" style="margin:4px 0 10px">Photograph the wine list. Claude picks from what's on it; you can adjust for the dish and budget after.</p>
       <button class="big" onclick="wlFile.click()">📷 Photo the wine list</button></div>
     <div class="card"><div class="title">At a store or a friend's</div><p class="sub" style="margin:4px 0 10px">Photograph a bottle's label to see if you've had it, own it, or should buy it.</p>
       <button class="big ghost" onclick="ckFile.click()">📷 Check a bottle</button></div>
     <div id="outRes"></div>`;
 }
-async function readWineList(file){
+let WL = {image: null, budget: Number(localStorage.getItem('sc_wl_budget')) || null, food: ''};
+async function startWineList(file){
   if (!file) return;
-  const box = document.getElementById('outRes'); box.innerHTML = '<div class="card empty">Reading the list…</div>';
-  const bv = document.querySelector('#wlBudget .chip.on')?.dataset.v;
+  toast('Reading the wine list…');
+  WL.image = await downsize(file, 2200);
+  WL.food = '';
+  if (location.hash === '#/out/list') wineListPage(); else location.hash = '#/out/list';
+}
+function wineListPage(){
+  topbar('Wine list', {back:'#/tonight', noGear:true});
+  if (!WL.image) { view.innerHTML = `<input type="file" id="wlAgain" accept="image/*" capture="environment" style="display:none" onchange="startWineList(this.files[0])"><div class="card empty">No photo yet.<br><br><button onclick="wlAgain.click()">📷 Photo the wine list</button></div>`; return; }
+  const budgets = [['Any', null], ['Under $75', 75], ['Under $100', 100], ['Under $150', 150]];
+  view.innerHTML = `
+    <input type="file" id="wlAgain" accept="image/*" capture="environment" style="display:none" onchange="startWineList(this.files[0])">
+    <div id="outRes"><div class="card empty">Reading the list…</div></div>
+    <h2>Fine-tune</h2>
+    <div class="card">
+      <div class="chips" id="wlBudget">${budgets.map(([l, v]) => `<button class="chip ${WL.budget === v ? 'on' : ''}" onclick="WL.budget=${v === null ? 'null' : v};localStorage.setItem('sc_wl_budget', ${v === null ? "''" : v});runWineList()">${l}</button>`).join('')}</div>
+      <div class="chips">${['Steak','Fish','Pasta','Chicken','Pizza','Cheese'].map(f => `<button class="chip ${WL.food === f ? 'on' : ''}" onclick="WL.food=WL.food==='${f}'?'':'${f}';runWineList()">${f}</button>`).join('')}</div>
+      <input id="wlFood" placeholder="Or type the dish" value="${esc(WL.food)}" onchange="WL.food=this.value;runWineList()">
+    </div>
+    <button class="ghost" style="width:100%" onclick="wlAgain.click()">📷 Retake the photo</button>`;
+  runWineList();
+}
+async function runWineList(){
+  if (document.getElementById('wlBudget')) {
+    document.querySelectorAll('#wlBudget .chip').forEach(c => c.classList.toggle('on', c.textContent === (WL.budget ? 'Under $' + WL.budget : 'Any')));
+  }
+  return readWineList();
+}
+async function readWineList(){
+  const box = document.getElementById('outRes'); if (!box || !WL.image) return;
+  box.innerHTML = `<div class="card empty">Reading the list${WL.food ? ' for ' + esc(WL.food.toLowerCase()) : ''}${WL.budget ? ', under $' + WL.budget : ''}…</div>`;
   try {
-    const image = await downsize(file, 2200);
-    const r = await api('winelist', {method:'POST', body: JSON.stringify({image, media_type:'image/jpeg', food: document.getElementById('wlFood').value, budget_max: bv ? Number(bv) : null})});
+    const image = WL.image;
+    const r = await api('winelist', {method:'POST', body: JSON.stringify({image, media_type:'image/jpeg', food: WL.food, budget_max: WL.budget})});
     if (r.unreadable && !r.picks.length) { box.innerHTML = '<div class="card empty">Couldn\'t read that list. Try again closer, flat, and with good light.</div>'; return; }
     box.innerHTML = `<h2>Picks</h2>${r.summary ? `<p>${esc(r.summary)}</p>` : ''}
       ${r.picks.map((x, i) => `<div class="card"><div class="row"><div class="col"><div class="title">${i + 1}. ${esc(x.line)}</div><div class="meta"><span><b>${esc(x.price)}</b></span>${x.journal ? `<span>Journal: ${esc(x.journal)}</span>` : ''}${x.owned ? '<span>You own this at home</span>' : ''}</div><div style="margin-top:6px">${esc(x.reason)}</div></div></div>
@@ -1431,6 +1463,7 @@ async function route(){
     else if (page === 'held') await heldPage();
     else if (page === 'map') await mapPage(arg === 'r' ? location.hash.split('/').slice(3).join('/') : null);
     else if (page === 'regions') await regionsPage();
+    else if (page === 'out' && arg === 'list') wineListPage();
     else if (page === 'out') await outPage();
     else if (page === 'gifts') await giftsPage();
     else if (page === 'list') await statusList(arg || 'all');
