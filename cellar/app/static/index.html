@@ -193,7 +193,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.16.1';
+const APP_VERSION = '0.16.2';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -249,7 +249,17 @@ function askText(title, placeholder){
 }
 
 // ---------- top bar ----------
-function goBack(parent){ if (window.__navDepth > 0) { window.__navDepth--; history.back(); } else location.hash = parent; }
+// History rules: a finished form never stays in history. go() replaces the current screen;
+// finishTo() returns to the screen you came from when that's the target, otherwise replaces.
+window.__stack = [location.hash || '#/tonight'];
+window.__replacing = false;
+function replaceHash(hash){ if (location.hash === hash) { route(); return; } window.__replacing = true; location.replace(location.pathname + location.search + hash); }
+function go(hash){ replaceHash(hash); }
+function finishTo(hash){
+  const s = window.__stack;
+  if (s.length > 1 && s[s.length - 2] === hash) history.back(); else replaceHash(hash);
+}
+function goBack(parent){ if (window.__stack.length > 1) history.back(); else replaceHash(parent); }
 function topbar(title, {back, action, noGear} = {}){
   const unframed = window.self === window.top && /\/api\/hassio_ingress\//.test(location.pathname);
   const right = action ? `<button class="tbtn" onclick="${action.onclick}" aria-label="${esc(action.label)}">${action.icon}</button>`
@@ -461,11 +471,11 @@ async function saveBottles(){
     const addSlot = sessionStorage.getItem('addSlot'); sessionStorage.removeItem('addSlot');
     if (addSlot && body.location_code) {
       try { await api(`bottle/${r.codes[0]}/slot`, {method:'POST', body: JSON.stringify({location_code: body.location_code, slot: addSlot})}); } catch (_) {}
-      location.hash = `#/location/${body.location_code}/find/${r.codes[0]}`;
+      go(`#/location/${body.location_code}/find/${r.codes[0]}`);
       toast(`Saved ${n} × ${r.wine}${n > 1 ? `; first one at ${addSlot}, the rest under "Slot not recorded"` : ` at ${addSlot}`}.`, `Print ${n} label${n>1?'s':''}`, () => printLabels(r.codes));
       return;
     }
-    location.hash = '#/bottle/' + r.codes[0];
+    go('#/bottle/' + r.codes[0]);
     toast(`Saved ${n} × ${r.wine}.`, `Print ${n} label${n>1?'s':''}`, () => printLabels(r.codes));
   } catch (e) { document.getElementById('addMsg').innerHTML = `<p class="sub">${esc(e.message)}</p>`; btn.disabled = false; btn.textContent = 'Save'; }
 }
@@ -576,11 +586,11 @@ async function arrived(code){
 }
 async function deleteBottle(code){
   const ok = await choose('Delete this bottle?', [{label:'Delete it', sub:'For mistakes. Use Drink for bottles you opened.', value:true}]); if (!ok) return;
-  await api('bottle/' + code, {method:'DELETE'}); toast('Bottle deleted.'); location.hash = '#/cellar';
+  await api('bottle/' + code, {method:'DELETE'}); toast('Bottle deleted.'); goBack('#/cellar');
 }
 async function deleteAll(wineId, n){
   const ok = await choose(`Delete all ${n} unopened bottles of this wine?`, [{label:`Delete all ${n}`, value:true}]); if (!ok) return;
-  const r = await api(`wine/${wineId}/bottles`, {method:'DELETE'}); toast(`Deleted ${r.deleted} bottles.`); location.hash = '#/cellar';
+  const r = await api(`wine/${wineId}/bottles`, {method:'DELETE'}); toast(`Deleted ${r.deleted} bottles.`); goBack('#/cellar');
 }
 async function moveBottle(code){
   const ls = await api('locations');
@@ -636,7 +646,7 @@ async function saveEdit(code){
     drink_from: num('e_from'), drink_to: num('e_to'), clear_window: v('e_from') === '' && v('e_to') === '',
     purchase_price: num('e_price'), clear_purchase_price: v('e_price') === '',
     est_value: num('e_value'), clear_est_value: v('e_value') === ''};
-  try { await api('bottle/' + code, {method:'PATCH', body: JSON.stringify(body)}); toast('Saved.'); location.hash = '#/bottle/' + code; }
+  try { await api('bottle/' + code, {method:'PATCH', body: JSON.stringify(body)}); toast('Saved.'); finishTo('#/bottle/' + code); }
   catch (e) { document.getElementById('editMsg').textContent = e.message; btn.disabled = false; btn.textContent = 'Save changes'; }
 }
 
@@ -920,7 +930,7 @@ async function regionsPage(){
 async function saveRegions(){
   const items = window.__regionItems.map((s, i) => ({id: s.id, region: document.getElementById('rgr' + i).value, country: document.getElementById('rgc' + i).value, on: document.getElementById('rg' + i).checked})).filter(x => x.on);
   const r = await api('regions/apply', {method:'POST', body: JSON.stringify({items})});
-  toast(`Saved regions for ${r.updated} wine${r.updated === 1 ? '' : 's'}.`); location.hash = '#/map';
+  toast(`Saved regions for ${r.updated} wine${r.updated === 1 ? '' : 's'}.`); finishTo('#/map');
 }
 
 // ---------- fill an empty spot: New arrivals first, then elsewhere, search, or a new bottle ----------
@@ -976,12 +986,15 @@ function closeFridgeThen(parent){
 
 // place a bottle by tapping a slot
 let placingCode = null;
-async function placeInFridge(bottleCode, locCode){ placingCode = bottleCode; location.hash = '#/location/' + locCode + '/place/' + bottleCode; }
+async function placeInFridge(bottleCode, locCode){ placingCode = bottleCode; sessionStorage.setItem('placeFrom', location.hash); location.hash = '#/location/' + locCode + '/place/' + bottleCode; }
 async function slotTapped(slot){
   const [, , locCode] = location.hash.split('/');
   try {
     const r = await api(`bottle/${placingCode}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot})});
-    toast(`${window.__placingLabel || 'Bottle'} placed ${r.slot ? 'at ' + r.slot + ' ' : ''}in ${r.location}.`); const code = placingCode; placingCode = null; location.hash = sessionStorage.getItem('pickReturn') ? '#/location/' + locCode + '/pick' : '#/bottle/' + code; sessionStorage.removeItem('pickReturn');
+    toast(`${window.__placingLabel || 'Bottle'} placed ${r.slot ? 'at ' + r.slot + ' ' : ''}in ${r.location}.`); const code = placingCode; placingCode = null; const from = sessionStorage.getItem('placeFrom'); sessionStorage.removeItem('placeFrom');
+    if (sessionStorage.getItem('pickReturn')) { sessionStorage.removeItem('pickReturn'); finishTo('#/location/' + locCode + '/pick'); }
+    else if (from && from.startsWith('#/location/' + locCode) && !from.includes('/place/')) finishTo('#/location/' + locCode + '/find/' + code);
+    else finishTo(from && !from.includes('/place/') ? from : '#/bottle/' + code);
   } catch (e) { toast(e.message); }
 }
 
@@ -1025,9 +1038,8 @@ function countMyFridge(code){
   for (let i = 0; i < lo; i++) racks.push({name: String.fromCharCode(65+n++), across:a, deep:d, zone: u ? 1 : 0});
   window.__lay = {order:'top_down', zones: u && lo ? ['Upper','Lower'] : [], racks}; window.__layFor = code; editLayout(code);
 }
-function go(hash){ if (location.hash === hash) route(); else location.hash = hash; }
-async function saveLayout(code){ try { const r = await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({kind:'fridge', layout: window.__lay})}); window.__lay = null; toast(`Layout saved: ${r.capacity} bottles.`); go('#/location/' + code); } catch (e) { toast(e.message); } }
-async function clearLayout(code){ const ok = await choose('Remove the rack layout?', [{label:'Remove it', sub:'Bottles stay in this place; slot positions are cleared.', value:true}]); if (!ok) return; await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({layout: null})}); window.__lay = null; go('#/location/' + code); }
+async function saveLayout(code){ try { const r = await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({kind:'fridge', layout: window.__lay})}); window.__lay = null; toast(`Layout saved: ${r.capacity} bottles.`); finishTo('#/location/' + code); } catch (e) { toast(e.message); } }
+async function clearLayout(code){ const ok = await choose('Remove the rack layout?', [{label:'Remove it', sub:'Bottles stay in this place; slot positions are cleared.', value:true}]); if (!ok) return; await api(`location/${code}/layout`, {method:'POST', body: JSON.stringify({layout: null})}); window.__lay = null; finishTo('#/location/' + code); }
 
 // ---------- Location ----------
 async function locationPage(code, mode, arg){
@@ -1174,7 +1186,7 @@ async function handleCode(raw){
     return;
   }
   stopScan();
-  location.hash = code.startsWith('L') ? '#/location/' + code : '#/bottle/' + code;
+  go(code.startsWith('L') ? '#/location/' + code : '#/bottle/' + code);
 }
 
 // ---------- Journal ----------
@@ -1248,7 +1260,7 @@ async function saveTasting(code){
   try {
     const body = {wine: tw.value, vintage: num('tv'), taster: tt.value, score: num('ts'), verdict: tvd.value, notes: tn.value, where: twh.value, bottle_code: code};
     await api('journal', {method:'POST', body: JSON.stringify(body)});
-    toast('Tasting saved.'); location.hash = code ? '#/bottle/' + code : '#/journal';
+    toast('Tasting saved.'); finishTo(code ? '#/bottle/' + code : '#/journal');
   } catch (e) { document.getElementById('tmsg').textContent = e.message; btn.disabled = false; btn.textContent = 'Save'; }
 }
 async function deleteTasting(id){ const ok = await choose('Delete this tasting?', [{label:'Delete it', value:true}]); if (!ok) return; await api('journal/' + id, {method:'DELETE'}); journal(); }
@@ -1289,8 +1301,13 @@ async function saveSettings(){
 
 // ---------- Router ----------
 const TAB_FOR = {map:'cellar', regions:'cellar', list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
-window.__navDepth = 0;
-window.addEventListener('hashchange', () => { window.__navDepth++; });
+window.addEventListener('hashchange', () => {
+  const s = window.__stack, cur = location.hash || '#/tonight';
+  if (window.__replacing) { s[s.length - 1] = cur; window.__replacing = false; }
+  else if (s.length > 1 && s[s.length - 2] === cur) s.pop();
+  else s.push(cur);
+  if (s.length > 50) s.splice(0, s.length - 50);
+});
 async function route(){
   closeSheet();
   if (!location.hash.startsWith('#/scan')) stopScan();
