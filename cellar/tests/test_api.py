@@ -294,3 +294,16 @@ def test_home_rate_and_glance():
         client.post("/api/journal", json={"wine": "HomeTest", "score": 88, "bottle_code": r["codes"][1]})
         assert client.get("/api/home").json()["rate"] is None   # rated, so the nudge goes away
         assert client.post("/api/winelist", json={"image": "QUJD", "media_type": "image/gif"}).status_code == 400
+
+
+def test_window_sources_and_apply():
+    with TestClient(app) as client:
+        a = client.post("/api/bottles", json={"producer": "WinEst", "drink_from": 2026, "drink_to": 2030, "window_from_label": True}).json()
+        assert client.get(f"/api/bottle/{a['codes'][0]}").json()["window_source"] == "ai"
+        b = client.post("/api/bottles", json={"producer": "WinOwn", "drink_from": 2026, "drink_to": 2030}).json()
+        bot = client.get(f"/api/bottle/{b['codes'][0]}").json()
+        assert bot["window_source"] == "owner"
+        assert client.post("/api/windows/apply", json={"items": [{"id": bot["wine_id"], "drink_from": 2027, "drink_to": 2035}]}).json()["updated"] == 1
+        after = client.get(f"/api/bottle/{b['codes'][0]}").json()
+        assert (after["window_from"], after["window_to"], after["window_source"]) == (2027, 2035, "reviewed")
+        assert client.post("/api/windows/review").status_code == 503   # no API key in tests

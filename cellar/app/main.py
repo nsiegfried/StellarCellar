@@ -272,6 +272,7 @@ class AddBottles(BaseModel):
     est_value: Optional[float] = None
     drink_from: Optional[int] = None
     drink_to: Optional[int] = None
+    window_from_label: bool = False   # true when the years are Claude's label estimate, unchanged by the owner
     location_code: Optional[str] = None
 
 
@@ -440,8 +441,8 @@ def add_bottles(body: AddBottles, session: Session = Depends(get_session)):
         session.commit()
         session.refresh(wine)
     if body.drink_from is not None or body.drink_to is not None:
-        session.add(DrinkingWindow(wine_id=wine.id, drink_from=body.drink_from,
-                                   drink_to=body.drink_to, source="owner", approved=True))
+        session.add(DrinkingWindow(wine_id=wine.id, drink_from=body.drink_from, drink_to=body.drink_to,
+                                   source="ai" if body.window_from_label else "owner", approved=True))
 
     label = wine_label(wine)
     wine_id = wine.id
@@ -1011,6 +1012,63 @@ def regions_apply(body: RegionApply, session: Session = Depends(get_session)):
         if str(it.get("country") or "").strip():
             w.country = str(it["country"]).strip()[:40]
         session.add(w)
+        n += 1
+    session.commit()
+    return {"updated": n}
+
+
+@app.post("/api/windows/review")
+def windows_review(session: Session = Depends(get_session)):
+    """Ask Claude to recheck the drinking window of every wine in the cellar or on order. Nothing is saved here."""
+    wines = {}
+    for b in session.exec(select(Bottle).where(Bottle.status.in_(["in_cellar", "incoming"]))).all():
+        w = session.get(Wine, b.wine_id)
+        if w.id in wines:
+            wines[w.id]["bottles"] += 1
+            continue
+        win = best_window(session, w.id)
+        wines[w.id] = {"id": w.id, "wine": " ".join(x for x in [w.producer, w.name] if x), "vintage": w.vintage,
+                       "region": ", ".join(x for x in [w.region, w.country] if x), "color": w.color,
+                       "current_from": win.drink_from if win else None, "current_to": win.drink_to if win else None,
+                       "current_source": win.source if win else None, "bottles": 1}
+    if not wines:
+        return {"suggestions": []}
+    rows, err = ai.suggest_windows([{k: v for k, v in w.items() if k not in ("bottles", "current_source")} for w in wines.values()])
+    if err:
+        raise HTTPException(503, err)
+    out = []
+    for r in rows:
+        w = wines.get(r["id"])
+        if not w:
+            continue
+        cf, ct = w["current_from"], w["current_to"]
+        if cf is None and ct is None:
+            kind = "missing"
+        elif (r["drink_from"], r["drink_to"]) == (cf, ct):
+            kind = "same"
+        else:
+            shift = max(abs((r["drink_from"] or 0) - (cf or 0)), abs((r["drink_to"] or 0) - (ct or 0)))
+            kind = "big" if shift >= 3 else "small"
+        out.append({**r, "label": wine_label(session.get(Wine, r["id"])), "bottles": w["bottles"],
+                    "current_from": cf, "current_to": ct, "current_source": w["current_source"], "kind": kind})
+    order = {"missing": 0, "big": 1, "small": 2, "same": 3}
+    return {"suggestions": sorted(out, key=lambda x: (order[x["kind"]], x["label"]))}
+
+
+class WindowApply(BaseModel):
+    items: List[dict]   # [{id, drink_from, drink_to}]
+
+
+@app.post("/api/windows/apply")
+def windows_apply(body: WindowApply, session: Session = Depends(get_session)):
+    n = 0
+    for it in body.items[:300]:
+        w = session.get(Wine, int(it.get("id", 0)))
+        if not w:
+            continue
+        f, t = it.get("drink_from"), it.get("drink_to")
+        session.add(DrinkingWindow(wine_id=w.id, drink_from=int(f) if f else None, drink_to=int(t) if t else None,
+                                   source="reviewed", approved=True))
         n += 1
     session.commit()
     return {"updated": n}

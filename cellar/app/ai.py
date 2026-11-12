@@ -229,3 +229,47 @@ def read_winelist(image_b64, media_type, food, budget, taste_profile, journal, c
                        "owned": bool(p.get("owned"))} for p in (data.get("picks") or [])[:3]],
             "avoid": [{"line": clean(a.get("line"), 160), "reason": clean(a.get("reason"), 140)}
                       for a in (data.get("avoid") or [])[:2]]}, None
+
+
+WINDOW_SYSTEM = (
+    "You are a careful sommelier estimating drinking windows for a home cellar. For each wine (producer, name, "
+    "vintage, region, colour, and the window currently on record if any), give the window as two years: when it "
+    "starts drinking well and when it is likely past its best, for a wine stored in a temperature-controlled fridge. "
+    "Base it on the producer's style, the region and the vintage. If the current window is reasonable, return it "
+    "unchanged. Respond with JSON only, no prose and no code fences: "
+    '{"wines": [{"id": 1, "drink_from": 2026, "drink_to": 2034, "confidence": "high|medium|low", '
+    '"reason": "under 18 words, only if you changed the window or are unsure"}]}. '
+    "Use confidence low when you don't know the wine; never invent facts about it."
+)
+
+
+def suggest_windows(wines):
+    """wines: [{id, wine, vintage, region, color, current_from, current_to}] -> (rows, error). Batches of 15."""
+    client = _client()
+    if not client:
+        return None, "Window review needs an Anthropic API key in the add-on options."
+    rows = []
+    try:
+        for i in range(0, min(len(wines), 200), 15):
+            resp = client.messages.create(
+                model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=6000, system=WINDOW_SYSTEM,
+                messages=[{"role": "user", "content": json.dumps({"today_year": __import__("datetime").date.today().year,
+                                                                   "wines": wines[i:i + 15]})}])
+            rows += _json_reply("".join(getattr(b, "text", "") for b in resp.content)).get("wines", [])
+    except Exception as exc:
+        if not rows:
+            return None, f"Window review failed ({type(exc).__name__}). Try again in a minute."
+    out = []
+    for r in rows:
+        try:
+            f, t = r.get("drink_from"), r.get("drink_to")
+            f = int(f) if f is not None else None
+            t = int(t) if t is not None else None
+            if f and t and t < f:
+                f, t = t, f
+            out.append({"id": int(r["id"]), "drink_from": f, "drink_to": t,
+                        "confidence": r.get("confidence") if r.get("confidence") in ("high", "medium", "low") else "low",
+                        "reason": str(r.get("reason") or "")[:160]})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out, None

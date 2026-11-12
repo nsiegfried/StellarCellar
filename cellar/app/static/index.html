@@ -197,7 +197,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.17.5';
+const APP_VERSION = '0.18.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -519,6 +519,7 @@ async function cellar(){
     <input id="q" placeholder="Search producer or wine" oninput="searchDebounced()"><div id="results"></div>
     ${total === 0 ? '<div class="card empty">No bottles yet. Tap + to add your first, or Scan to read a label.</div>' : ''}
     <div class="card tap row" onclick="location.hash='#/map'"><div class="title">🌍 Where your wines come from</div><span class="sub">›</span></div>
+    <div class="card tap row" onclick="location.hash='#/windows'"><div class="col"><div class="title">🗓️ Recheck drinking windows</div><div class="sub">Claude reviews every wine; you approve changes</div></div><span class="sub">›</span></div>
     <h2>Places</h2>
     ${locs.map(l => `<div class="card tap" onclick="location.hash='#/location/${l.code}'"><div class="row"><div class="col"><div class="title">${esc(l.name)}${l.holding ? ' <span class="sub">holding</span>' : ''}</div><div class="meta"><span>${l.count}${l.capacity ? ' of ' + l.capacity : ''} bottle${l.count===1&&!l.capacity?'':'s'}</span>${l.ready != null ? `<span>${l.ready} ready</span>` : ''}${l.kind === 'fridge' ? '<span>fridge</span>' : ''}</div></div><span class="sub">›</span></div></div>`).join('')}
     <div class="grid2"><button class="ghost" onclick="addPlace()">Add a place</button><button onclick="location.hash='#/add'">Add bottles</button></div>
@@ -590,6 +591,7 @@ async function scanLabelFile(file){
     const d = await readLabel(file, 'scanMsg');
     producer.value = d.producer; name.value = d.name; region.value = d.region; color.value = d.color;
     document.getElementById('country').value = d.country || '';
+    window.__labelWin = (d.drink_from || d.drink_to) ? [d.drink_from || null, d.drink_to || null] : null;
     document.getElementById('vintage').value = d.vintage ?? '';
     document.getElementById('from').value = d.drink_from ?? ''; document.getElementById('to').value = d.drink_to ?? '';
     const bits = [`Read with ${d.confidence} confidence. Check the fields, then Save.`];
@@ -603,7 +605,9 @@ const num = id => { const v = document.getElementById(id).value; return v === ''
 async function saveBottles(){
   const btn = document.getElementById('saveBtn'); if (btn.disabled) return;
   btn.disabled = true; btn.textContent = 'Saving…';
-  const body = {producer: producer.value, name: name.value, vintage: num('vintage'), color: color.value, region: region.value, country: document.getElementById('country').value,
+  const lw = window.__labelWin;
+  const fromLabel = !!lw && num('from') === lw[0] && num('to') === lw[1];
+  const body = {window_from_label: fromLabel, producer: producer.value, name: name.value, vintage: num('vintage'), color: color.value, region: region.value, country: document.getElementById('country').value,
     quantity: num('qty') || 1, purchase_price: num('price'), drink_from: num('from'), drink_to: num('to'),
     location_code: document.getElementById('loc').value || null, special_occasion: special.checked};
   try {
@@ -1056,6 +1060,29 @@ function pinSheet(i){
     <button class="ghost" style="width:100%" onclick="closeSheet();location.hash='#/map/r/${encodeURIComponent(p.name + '|' + (p.country || ''))}'">About ${esc(p.name)}</button>
     <button class="ghost" style="width:100%;margin-top:8px;border:0" onclick="closeSheet()">Close</button>`);
 }
+async function windowsPage(){
+  topbar('Recheck drinking windows', {back:'#/cellar', noGear:true});
+  view.innerHTML = '<div class="card empty">Claude is rechecking every wine. This takes about a minute…</div>';
+  let res; try { res = await api('windows/review', {method:'POST'}); } catch (e) { if (e.session) return sessionEnded(); view.innerHTML = `<div class="card empty">${esc(e.message)}<br><br><button class="ghost" onclick="route()">Try again</button></div>`; return; }
+  const items = res.suggestions; window.__winItems = items;
+  const fmt = (f, t) => f || t ? `${f || '…'}–${t || '…'}` : 'none';
+  const groups = [['missing', 'No window yet'], ['big', 'Claude would change by 3+ years'], ['small', 'Small adjustments'], ['same', 'Claude agrees']];
+  const counts = Object.fromEntries(groups.map(([k]) => [k, items.filter(x => x.kind === k).length]));
+  view.innerHTML = `<p class="sub">${items.length} wines checked: ${counts.missing} without a window, ${counts.big} big changes, ${counts.small} small ones, ${counts.same} where Claude agrees. Ticked items will be saved; review the big changes before saving.</p>
+    ${groups.map(([k, title]) => { const list = items.map((x, i) => [x, i]).filter(([x]) => x.kind === k); if (!list.length) return '';
+      return `<h2>${title} <span class="sub">${list.length}</span></h2>` + list.map(([x, i]) => `<div class="card"><label style="display:flex;gap:10px;align-items:flex-start;color:var(--ink)">
+        <input type="checkbox" id="wn${i}" style="width:auto;min-height:0;margin:4px 0 0" ${k === 'missing' || (k !== 'same' && x.confidence === 'high' && k === 'small') ? 'checked' : ''} ${k === 'same' ? 'disabled' : ''}>
+        <span class="col"><span class="title">${esc(x.label)}${x.bottles > 1 ? ` <span class="sub">×${x.bottles}</span>` : ''}</span>
+        <span class="sub" style="display:block">${k === 'missing' ? '' : `Now ${fmt(x.current_from, x.current_to)}${x.current_source === 'import' ? ' (from the import)' : x.current_source === 'ai' ? ' (label estimate)' : ''} → `}<b>${fmt(x.drink_from, x.drink_to)}</b> · ${esc(x.confidence)} confidence</span>
+        ${x.reason ? `<span class="sub" style="display:block">${esc(x.reason)}</span>` : ''}</span></label>
+        ${k === 'same' ? '' : `<div class="grid2" style="margin-top:8px"><input id="wf${i}" type="number" value="${x.drink_from || ''}" placeholder="From"><input id="wt${i}" type="number" value="${x.drink_to || ''}" placeholder="To"></div>`}</div>`).join(''); }).join('')}
+    <button class="big" onclick="saveWindows()">Save ticked windows</button>`;
+}
+async function saveWindows(){
+  const items = window.__winItems.map((x, i) => ({id: x.id, on: document.getElementById('wn' + i)?.checked && x.kind !== 'same', drink_from: Number(document.getElementById('wf' + i)?.value) || null, drink_to: Number(document.getElementById('wt' + i)?.value) || null})).filter(x => x.on);
+  const r = await api('windows/apply', {method:'POST', body: JSON.stringify({items})});
+  toast(`Updated ${r.updated} drinking window${r.updated === 1 ? '' : 's'}.`); finishTo('#/cellar');
+}
 async function regionsPage(){
   topbar('Find regions', {back:'#/map', noGear:true});
   view.innerHTML = '<div class="card empty">Asking Claude where these wines are from…</div>';
@@ -1446,7 +1473,7 @@ async function saveSettings(){
 }
 
 // ---------- Router ----------
-const TAB_FOR = {out:'tonight', home:'tonight', map:'cellar', regions:'cellar', list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
+const TAB_FOR = {windows:'cellar', out:'tonight', home:'tonight', map:'cellar', regions:'cellar', list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
 window.addEventListener('hashchange', () => {
   const s = window.__stack, cur = location.hash || '#/tonight';
   if (window.__replacing) { s[s.length - 1] = cur; window.__replacing = false; }
@@ -1473,6 +1500,7 @@ async function route(){
     else if (page === 'held') await heldPage();
     else if (page === 'map') await mapPage(arg === 'r' ? location.hash.split('/').slice(3).join('/') : null);
     else if (page === 'regions') await regionsPage();
+    else if (page === 'windows') await windowsPage();
     else if (page === 'out' && arg === 'list') wineListPage();
     else if (page === 'out') await outPage();
     else if (page === 'gifts') await giftsPage();
