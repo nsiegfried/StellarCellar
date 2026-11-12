@@ -22,6 +22,7 @@ button.danger{background:transparent;color:var(--bad);border:1.5px solid var(--l
 button.big{width:100%;font-size:calc(var(--fs) * 1.1);padding:16px}
 button:disabled{opacity:.6}
 input,select,textarea{font:inherit;width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);margin:4px 0 12px;min-height:48px}
+input[type=checkbox]{width:24px!important;height:24px;min-height:0!important;padding:0;margin:2px 0 0!important;border-radius:6px;flex:none;accent-color:var(--wine);cursor:pointer}
 label{font-size:var(--fs-sub);color:var(--muted)}
 h2{font-size:var(--fs-h);font-weight:700;margin:22px 0 10px;color:var(--ink)}
 h2 .sub{font-weight:400}
@@ -197,7 +198,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.18.1';
+const APP_VERSION = '0.18.2';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -1075,16 +1076,21 @@ async function windowsPage(){
   const counts = Object.fromEntries(groups.map(([k]) => [k, items.filter(x => x.kind === k).length]));
   view.innerHTML = `<p class="sub">${items.length} wines checked: ${counts.missing} without a window, ${counts.big} big changes, ${counts.small} small ones, ${counts.same} where Claude agrees. Ticked items will be saved; review the big changes before saving.</p>
     ${groups.map(([k, title]) => { const list = items.map((x, i) => [x, i]).filter(([x]) => x.kind === k); if (!list.length) return '';
-      return `<h2>${title} <span class="sub">${list.length}</span></h2>` + list.map(([x, i]) => `<div class="card"><label style="display:flex;gap:10px;align-items:flex-start;color:var(--ink)">
-        <input type="checkbox" id="wn${i}" style="width:auto;min-height:0;margin:4px 0 0" ${k === 'missing' || (k !== 'same' && x.confidence === 'high' && k === 'small') ? 'checked' : ''} ${k === 'same' ? 'disabled' : ''}>
+      return `<h2 class="row">${title} <span class="sub">${list.length}</span>${k === 'same' ? `<button class="ghost" style="min-height:34px;padding:4px 12px;font-size:var(--fs-sub)" onclick="document.querySelectorAll('[data-kind=same]').forEach(c=>c.checked=true);countWindows()">Confirm all</button>` : ''}</h2>` + list.map(([x, i]) => `<div class="card"><label style="display:flex;gap:10px;align-items:flex-start;color:var(--ink)">
+        <input type="checkbox" id="wn${i}" data-kind="${k}" onchange="countWindows()" ${k === 'missing' || (x.confidence === 'high' && k === 'small') ? 'checked' : ''}>
         <span class="col"><span class="title">${esc(x.label)}${x.bottles > 1 ? ` <span class="sub">×${x.bottles}</span>` : ''}</span>
         <span class="sub" style="display:block">${k === 'missing' ? '' : `Now ${fmt(x.current_from, x.current_to)}${x.current_source === 'import' ? ' (from the import)' : x.current_source === 'ai' ? ' (label estimate)' : ''} → `}<b>${fmt(x.drink_from, x.drink_to)}</b> · ${esc(x.confidence)} confidence</span>
         ${x.reason ? `<span class="sub" style="display:block">${esc(x.reason)}</span>` : ''}</span></label>
-        ${k === 'same' ? '' : `<div class="grid2" style="margin-top:8px"><input id="wf${i}" type="number" value="${x.drink_from || ''}" placeholder="From"><input id="wt${i}" type="number" value="${x.drink_to || ''}" placeholder="To"></div>`}</div>`).join(''); }).join('')}
-    <button class="big" onclick="saveWindows()">Save ticked windows</button>`;
+        ${k === 'same' ? '<span class="sub" style="display:block;margin-top:4px">Tick to confirm it as reviewed.</span>' : `<div class="grid2" style="margin-top:8px"><input id="wf${i}" type="number" value="${x.drink_from || ''}" placeholder="From"><input id="wt${i}" type="number" value="${x.drink_to || ''}" placeholder="To"></div>`}</div>`).join(''); }).join('')}
+    <button class="big" id="winSave" onclick="saveWindows()">Save ticked windows</button>`;
+  countWindows();
 }
+function countWindows(){ const n = document.querySelectorAll('[id^=wn]:checked').length; const b = document.getElementById('winSave'); if (b) { b.textContent = n ? `Save ${n} window${n === 1 ? '' : 's'}` : 'Tick windows to save'; b.disabled = !n; } }
 async function saveWindows(){
-  const items = window.__winItems.map((x, i) => ({id: x.id, on: document.getElementById('wn' + i)?.checked && x.kind !== 'same', drink_from: Number(document.getElementById('wf' + i)?.value) || null, drink_to: Number(document.getElementById('wt' + i)?.value) || null})).filter(x => x.on);
+  const items = window.__winItems.map((x, i) => ({id: x.id, on: document.getElementById('wn' + i)?.checked,
+    drink_from: x.kind === 'same' ? x.drink_from : (Number(document.getElementById('wf' + i)?.value) || null),
+    drink_to: x.kind === 'same' ? x.drink_to : (Number(document.getElementById('wt' + i)?.value) || null)})).filter(x => x.on);
+  if (!items.length) return toast('Tick at least one window.');
   const r = await api('windows/apply', {method:'POST', body: JSON.stringify({items})});
   toast(`Updated ${r.updated} drinking window${r.updated === 1 ? '' : 's'}.`); finishTo('#/cellar');
 }
@@ -1096,7 +1102,7 @@ async function regionsPage(){
   window.__regionItems = items;
   if (!items.length) { view.innerHTML = '<div class="card empty">Every wine in the cellar already has a region.</div>'; return; }
   view.innerHTML = `<p class="sub">Check each suggestion. High and medium confidence are ticked; low ones are left for you. Edit any field before saving.</p>
-    ${items.map((s, i) => `<div class="card"><label style="display:flex;gap:10px;align-items:flex-start;color:var(--ink)"><input type="checkbox" id="rg${i}" style="width:auto;min-height:0;margin:4px 0 0" ${s.confidence !== 'low' && s.region ? 'checked' : ''}><span class="col"><span class="title">${esc(s.label)}</span><span class="sub" style="display:block">${esc(s.confidence)} confidence${s.mappable ? '' : ' · not on the map table yet'}</span></span></label>
+    ${items.map((s, i) => `<div class="card"><label style="display:flex;gap:10px;align-items:flex-start;color:var(--ink)"><input type="checkbox" id="rg${i}" ${s.confidence !== 'low' && s.region ? 'checked' : ''}><span class="col"><span class="title">${esc(s.label)}</span><span class="sub" style="display:block">${esc(s.confidence)} confidence${s.mappable ? '' : ' · not on the map table yet'}</span></span></label>
       <div class="grid2" style="margin-top:8px"><input id="rgr${i}" value="${esc(s.region)}" placeholder="Region"><input id="rgc${i}" value="${esc(s.country)}" placeholder="Country"></div></div>`).join('')}
     <button class="big" onclick="saveRegions()">Save ticked regions</button>`;
 }
