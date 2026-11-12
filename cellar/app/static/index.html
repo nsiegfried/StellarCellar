@@ -197,7 +197,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.18.0';
+const APP_VERSION = '0.18.1';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -670,7 +670,11 @@ async function bottleMenu(){
   const inCellar = b.bottle_status === 'in_cellar', incoming = b.bottle_status === 'incoming';
   const opts = [];
   if (inCellar) opts.push({label:'Move to another place', value:'move'});
-  if (inCellar && b.location_code) opts.push({label: b.slot ? `Change the slot (now ${b.slot})` : 'Set the slot', value:'slot'});
+  const places = await api('locations');
+  const here = places.find(l => l.code === b.location_code);
+  const racked = places.filter(l => l.capacity);
+  if (inCellar && here && here.capacity) opts.push({label: b.slot ? `Change the slot (now ${b.slot})` : 'Set the slot', value:'slot'});
+  else if (inCellar) racked.forEach(f => opts.push({label: `Put it in the ${f.name}`, sub: 'Tap the spot it sits in', value: 'into:' + f.code}));
   if ((inCellar || incoming) && !b.reserved_for) opts.push({label:'Hold for someone', sub:'Keeps it out of Tonight and suggestions', value:'hold'});
   if (inCellar || incoming) opts.push({label:'Print label', value:'print'});
   opts.push({label:'Edit details', sub:`Bottle code ${code}`, value:'edit'});
@@ -678,6 +682,7 @@ async function bottleMenu(){
   const pick = await choose(b.label, opts);
   if (pick === 'move') moveBottle(code);
   else if (pick === 'slot') placeInFridge(code, b.location_code);
+  else if (pick && String(pick).startsWith('into:')) placeInFridge(code, String(pick).slice(5));
   else if (pick === 'hold') holdBottle(code);
   else if (pick === 'print') printLabels([code]);
   else if (pick === 'edit') location.hash = '#/edit/' + code;
@@ -1217,6 +1222,17 @@ async function locationPage(code, mode, arg){
   sessionStorage.removeItem('pickReturn');
   const l = await api('location/' + code);
   const placing = mode === 'place' && arg;
+  if (placing && !l.layout) {
+    const racked = (await api('locations')).filter(x => x.capacity);
+    if (racked.length === 1) return go('#/location/' + racked[0].code + '/place/' + arg);
+    if (racked.length > 1) {
+      const pick = await choose('Which fridge or rack?', racked.map(x => ({label: x.name, sub: `${x.count} of ${x.capacity} bottles`, value: x.code})));
+      return pick ? go('#/location/' + pick + '/place/' + arg) : goBack('#/bottle/' + arg);
+    }
+    topbar(l.name, {back:'#/bottle/' + arg, noGear:true});
+    view.innerHTML = `<div class="card empty">${esc(l.name)} has no racks, so there are no spots to pick.<br><br><button onclick="go('#/location/${esc(code)}/layout')">Set up racks for ${esc(l.name)}</button></div>`;
+    return;
+  }
   let placingLabel = '';
   if (placing) { try { placingLabel = (await api('bottle/' + arg)).label; } catch (_) {} }
   window.__placingLabel = placingLabel;
