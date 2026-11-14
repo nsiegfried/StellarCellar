@@ -152,13 +152,13 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .rack.bulk{grid-template-columns:1fr !important;padding:12px 10px 14px}
 .fridge .rack.bulk .pile{display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
 .fridge .rack.bulk .pile .slot{width:22px;height:22px;aspect-ratio:auto}
-.fridge .door{position:absolute;inset:0;border-radius:14px;background:linear-gradient(135deg,#e2e3e6,#b4b6bb 45%,#d2d4d8);transform-origin:left center;transition:transform .9s cubic-bezier(.4,.1,.2,1),opacity .25s ease .85s;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,.4);cursor:pointer}
+.fridge .door{position:absolute;inset:0;border-radius:14px;background:linear-gradient(135deg,#e2e3e6,#b4b6bb 45%,#d2d4d8);transform-origin:right center;transition:transform .9s cubic-bezier(.4,.1,.2,1),opacity .25s ease .85s;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,.4);cursor:pointer}
 .fridge .door .glass{position:absolute;inset:14px;border-radius:8px;background:linear-gradient(165deg,rgba(40,46,58,.9),rgba(12,14,18,.95) 60%),repeating-linear-gradient(180deg,transparent 0 44px,rgba(233,217,186,.28) 44px 48px);box-shadow:inset 0 0 0 2px rgba(255,255,255,.12)}
 .fridge .door .handle{position:absolute;left:4px;top:min(18%,120px);height:min(40%,260px);width:10px;border-radius:5px;background:linear-gradient(90deg,#f0f0f0,#8c8e93);box-shadow:2px 0 6px rgba(0,0,0,.35)}
 .fridge .door{align-items:flex-start}
 .fridge .door .name{position:absolute;top:min(22%,170px);left:0;right:0;text-align:center;color:#fff;font-weight:700;font-size:var(--fs-title);text-shadow:0 2px 8px rgba(0,0,0,.7);z-index:2}
 .fridge .door .hint{position:absolute;top:calc(min(22%,170px) + 2.2em);left:0;right:0;text-align:center;color:#fff;opacity:.85;font-size:var(--fs-sub);z-index:2}
-.fridge.open .door{transform:rotateY(-112deg);opacity:0;pointer-events:none}
+.fridge.open .door{transform:rotateY(112deg);opacity:0;pointer-events:none}
 .fridge.closing .door{transition:opacity .12s ease,transform .45s cubic-bezier(.4,.1,.2,1) .05s;opacity:1;transform:none}
 .fridge .cap{color:#fff;opacity:.8;font-size:var(--fs-sub);text-align:center;margin-top:6px}
 .legend{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-size:var(--fs-sub);color:var(--muted);margin-bottom:8px}
@@ -198,7 +198,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.18.2';
+const APP_VERSION = '0.18.3';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -1260,8 +1260,15 @@ async function locationPage(code, mode, arg){
       : `<h2>Bottles</h2>${Object.values(groups).map(bottleRow).join('') || '<div class="card empty">Empty. Scan bottles into this place or move them here.</div>'}`}
     <h2>More</h2>
     <div class="grid2"><button class="ghost" onclick="location.hash='#/location/${esc(code)}/layout'">${l.layout ? 'Edit rack layout' : 'Set up racks'}</button>${l.bottles.length ? `<button class="ghost" onclick="printLabels(${JSON.stringify(l.bottles.map(b=>b.code))})">Print ${l.bottles.length} labels</button>` : '<span></span>'}</div>
+    ${l.code !== 'LNEWARR' ? `<button class="danger" style="width:100%;margin-top:10px" onclick="removePlace('${esc(code)}', ${l.bottles.length}, ${esc(JSON.stringify(l.name)).replace(/"/g, '&quot;')})">Remove ${esc(l.name)}</button>` : ''}
     <p class="sub" style="text-align:center;margin-top:8px">Place code ${esc(code)}</p>`}`;
   if (l.layout) openDoor(placing || highlight ? 200 : 450);
+}
+async function removePlace(code, count, name){
+  const ok = await choose(`Remove ${name}?`, [{label: `Remove ${name}`, sub: count ? `Its ${count} bottle${count === 1 ? '' : 's'} move to New arrivals so nothing is lost.` : 'It has no bottles. You can add the place again any time.', value: true}]);
+  if (!ok) return;
+  try { const r = await api('location/' + code, {method:'DELETE'}); toast(`Removed ${r.removed}${r.moved_to_new_arrivals ? `; ${r.moved_to_new_arrivals} bottle${r.moved_to_new_arrivals === 1 ? '' : 's'} moved to New arrivals` : ''}.`); go('#/cellar'); }
+  catch (e) { toast(e.message); }
 }
 async function addWineHere(code){
   const how = await choose('Add wine here', [

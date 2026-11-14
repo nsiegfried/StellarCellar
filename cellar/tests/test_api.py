@@ -307,3 +307,14 @@ def test_window_sources_and_apply():
         after = client.get(f"/api/bottle/{b['codes'][0]}").json()
         assert (after["window_from"], after["window_to"], after["window_source"]) == (2027, 2035, "reviewed")
         assert client.post("/api/windows/review").status_code == 503   # no API key in tests
+
+
+def test_delete_location():
+    with TestClient(app) as client:
+        loc = client.post("/api/locations", json={"name": "Old Pantry"}).json()
+        b = client.post("/api/bottles", json={"producer": "Mover", "location_code": loc["code"]}).json()
+        r = client.delete(f"/api/location/{loc['code']}").json()
+        assert r["ok"] and r["moved_to_new_arrivals"] == 1
+        assert client.get(f"/api/bottle/{b['codes'][0]}").json()["location_code"] == "LNEWARR"
+        assert client.get(f"/api/location/{loc['code']}").status_code == 404
+        assert client.delete("/api/location/LNEWARR").status_code == 400

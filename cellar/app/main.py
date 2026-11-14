@@ -1198,6 +1198,28 @@ def create_location(body: LocationBody, session: Session = Depends(get_session))
     return {"code": loc.code, "name": loc.name}
 
 
+@app.delete("/api/location/{code}")
+def delete_location(code: str, session: Session = Depends(get_session)):
+    """Remove a place. Bottles still there (and the history of opened or given bottles) move to New arrivals."""
+    if code == HOLDING_CODE:
+        raise HTTPException(400, "New arrivals is the holding place and can't be removed")
+    loc = get_location_or_404(session, code)
+    holding = session.exec(select(Location).where(Location.code == HOLDING_CODE)).first()
+    moved = 0
+    for b in session.exec(select(Bottle).where(Bottle.location_id == loc.id)).all():
+        if b.status in ("in_cellar", "incoming"):
+            moved += 1
+        b.location_id = holding.id
+        b.slot = ""
+        session.add(b)
+    if get_setting(session, "default_location_code") == code:
+        set_setting(session, "default_location_code", HOLDING_CODE)
+    name = loc.name
+    session.delete(loc)
+    session.commit()
+    return {"ok": True, "removed": name, "moved_to_new_arrivals": moved}
+
+
 class LayoutBody(BaseModel):
     kind: str = "fridge"
     layout: Optional[dict] = None     # None clears the layout
