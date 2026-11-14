@@ -38,7 +38,8 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"  # no I, L, O, U
 
 
-HOLDING_CODE = "LNEWARR"   # built-in holding place for bottles without a decided spot
+HOLDING_CODE = "LNEWARR"          # internal code kept stable so printed labels never change
+HOLDING_NAME = "Needs a Home"   # built-in holding place for bottles without a decided spot
 
 
 @asynccontextmanager
@@ -48,10 +49,14 @@ async def lifespan(_app):
     with Session(engine) as session:
         holding = session.exec(select(Location).where(Location.code == HOLDING_CODE)).first()
         if not holding:
-            holding = Location(name="New arrivals", code=HOLDING_CODE)
+            holding = Location(name=HOLDING_NAME, code=HOLDING_CODE)
             session.add(holding)
             session.commit()
             session.refresh(holding)
+        elif holding.name == "New arrivals":      # one-time rename for existing installs
+            holding.name = HOLDING_NAME
+            session.add(holding)
+            session.commit()
         # imported journal entries: the export's inventory notes are bookkeeping, not where it was tasted
         for t in session.exec(select(Tasting).where(Tasting.source == "import", Tasting.where != "")).all():
             t.context = (t.context + " " + t.where).strip() if t.context else t.where
@@ -1200,9 +1205,9 @@ def create_location(body: LocationBody, session: Session = Depends(get_session))
 
 @app.delete("/api/location/{code}")
 def delete_location(code: str, session: Session = Depends(get_session)):
-    """Remove a place. Bottles still there (and the history of opened or given bottles) move to New arrivals."""
+    """Remove a place. Bottles still there (and the history of opened or given bottles) move to Needs a Home."""
     if code == HOLDING_CODE:
-        raise HTTPException(400, "New arrivals is the holding place and can't be removed")
+        raise HTTPException(400, f"{HOLDING_NAME} is the holding place and can't be removed")
     loc = get_location_or_404(session, code)
     holding = session.exec(select(Location).where(Location.code == HOLDING_CODE)).first()
     moved = 0

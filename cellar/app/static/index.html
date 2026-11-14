@@ -198,7 +198,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.18.3';
+const APP_VERSION = '0.18.4';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -321,7 +321,7 @@ function needsCard(h){
       <div class="title">How was the ${esc(h.rate.label)}?</div><div class="sub">Opened ${new Date(h.rate.opened).toLocaleDateString(undefined,{weekday:'long'})}. One tap saves it to the journal.</div>
       <div class="chips" style="margin:10px 0 4px">${[95,90,85,80,70].map(v => `<button class="chip" onclick="quickRate('${esc(h.rate.code)}',${v},this)">${v}</button>`).join('')}</div>
       <div class="row"><a href="#/journal/new/${esc(h.rate.code)}" class="sub" style="color:var(--wine);text-decoration:none;font-weight:600">Add notes instead ›</a><button class="ghost" style="min-height:36px;padding:6px 12px;border:0" onclick="snooze('rate_${esc(h.rate.code)}')">Not now</button></div></div>`;
-  if (h.arrivals > 0 && !snoozed('arrivals')) return `<div class="card row"><div class="col"><div class="title">${h.arrivals} bottle${h.arrivals === 1 ? '' : 's'} waiting to be shelved</div><div class="sub">They're in New arrivals. Give each a spot so you can find it.</div></div></div>
+  if (h.arrivals > 0 && !snoozed('arrivals')) return `<div class="card row"><div class="col"><div class="title">${h.arrivals} bottle${h.arrivals === 1 ? '' : 's'} waiting to be shelved</div><div class="sub">They're in Needs a Home. Give each a spot so you can find it.</div></div></div>
       <div class="grid2" style="margin:-4px 0 10px"><button onclick="location.hash='#/location/${esc(h.holding_code)}'">Shelve them</button><button class="ghost" onclick="snooze('arrivals')">Not now</button></div>`;
   if (h.incoming > 0 && !snoozed('incoming')) return `<div class="card tap row" onclick="location.hash='#/cellar'"><div class="col"><div class="title">${h.incoming} bottle${h.incoming === 1 ? '' : 's'} on order</div><div class="sub">Did any arrive? Mark them in Cellar → On order.</div></div><button class="ghost" style="min-height:36px;padding:6px 12px;border:0" onclick="event.stopPropagation();snooze('incoming', 72)">Not now</button></div>`;
   if (h.drink_soon > 0 && !snoozed('soon')) return `<div class="card tap row" onclick="location.hash='#/list/drink_soon'"><div class="col"><div class="title">${h.drink_soon} bottle${h.drink_soon === 1 ? '' : 's'} closing their window</div><div class="sub">Worth opening in the next few months.</div></div><span class="sub">›</span></div>`;
@@ -898,7 +898,7 @@ async function cellTapped(rack, pos, deep, placing){
   if (layers.some(l => l.b)) return bottleCard(rack, pos, deep, layers.find(l => l.b).d);
   const opts = layers.map(l => l.b
     ? {label: l.b.label, sub: deep > 1 ? `Open · ${where(l.d)}` : 'Open', value: 'open:' + l.b.code}
-    : {label: deep > 1 ? `Add wine to the ${where(l.d)}` : 'Add wine here', sub: 'Pick from New arrivals or add a new bottle', value: 'fill:' + l.id});
+    : {label: deep > 1 ? `Add wine to the ${where(l.d)}` : 'Add wine here', sub: 'Pick from Needs a Home or add a new bottle', value: 'fill:' + l.id});
   let pick = opts.length === 1 ? opts[0].value : await choose(`Rack ${rack}, position ${pos}`, opts);
   if (!pick) return;
   const [kind, val] = [pick.slice(0, pick.indexOf(':')), pick.slice(pick.indexOf(':') + 1)];
@@ -1112,7 +1112,7 @@ async function saveRegions(){
   toast(`Saved regions for ${r.updated} wine${r.updated === 1 ? '' : 's'}.`); finishTo('#/map');
 }
 
-// ---------- fill an empty spot: New arrivals first, then elsewhere, search, or a new bottle ----------
+// ---------- fill an empty spot: Needs a Home first, then elsewhere, search, or a new bottle ----------
 async function fillPage(locCode, slot){
   const [l, all, locs] = await Promise.all([api('location/' + locCode), api('bottles'), api('locations')]);
   const holding = (locs.find(x => x.holding) || {}).code;
@@ -1121,7 +1121,7 @@ async function fillPage(locCode, slot){
   const onRack = candidates.filter(b => b.location_code === locCode);
   if (onRack.length) groups.push(['On this fridge, slot not recorded', onRack]);
   const arrivals = candidates.filter(b => b.location_code === holding);
-  if (arrivals.length) groups.push(['New arrivals', arrivals]);
+  if (arrivals.length) groups.push(['Needs a Home', arrivals]);
   const byPlace = {};
   candidates.filter(b => b.location_code !== locCode && b.location_code !== holding).forEach(b => (byPlace[b.location] = byPlace[b.location] || []).push(b));
   Object.entries(byPlace).forEach(g => groups.push(g));
@@ -1265,15 +1265,15 @@ async function locationPage(code, mode, arg){
   if (l.layout) openDoor(placing || highlight ? 200 : 450);
 }
 async function removePlace(code, count, name){
-  const ok = await choose(`Remove ${name}?`, [{label: `Remove ${name}`, sub: count ? `Its ${count} bottle${count === 1 ? '' : 's'} move to New arrivals so nothing is lost.` : 'It has no bottles. You can add the place again any time.', value: true}]);
+  const ok = await choose(`Remove ${name}?`, [{label: `Remove ${name}`, sub: count ? `Its ${count} bottle${count === 1 ? '' : 's'} move to Needs a Home so nothing is lost.` : 'It has no bottles. You can add the place again any time.', value: true}]);
   if (!ok) return;
-  try { const r = await api('location/' + code, {method:'DELETE'}); toast(`Removed ${r.removed}${r.moved_to_new_arrivals ? `; ${r.moved_to_new_arrivals} bottle${r.moved_to_new_arrivals === 1 ? '' : 's'} moved to New arrivals` : ''}.`); go('#/cellar'); }
+  try { const r = await api('location/' + code, {method:'DELETE'}); toast(`Removed ${r.removed}${r.moved_to_new_arrivals ? `; ${r.moved_to_new_arrivals} bottle${r.moved_to_new_arrivals === 1 ? '' : 's'} moved to Needs a Home` : ''}.`); go('#/cellar'); }
   catch (e) { toast(e.message); }
 }
 async function addWineHere(code){
   const how = await choose('Add wine here', [
     {label:'Scan bottles in', sub:'Scan each bottle label; it lands here as you go', value:'scan'},
-    {label:'Pick from another place', sub:'Choose bottles already in the cellar, like New arrivals', value:'pick'},
+    {label:'Pick from another place', sub:'Choose bottles already in the cellar, like Needs a Home', value:'pick'},
     {label:'Add a new bottle', sub:'Photograph the label of a bottle not yet in the app', value:'new'}]);
   if (how === 'scan') putHere(code);
   else if (how === 'pick') location.hash = '#/location/' + code + '/pick';

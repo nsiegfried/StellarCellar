@@ -1,5 +1,5 @@
 name: Stellar Cellar
-version: "0.18.3"
+version: "0.18.4"
 slug: stellar_cellar
 description: Wine cellar tracker with QR labels, drinking windows, price tiers, and Claude picks
 arch:

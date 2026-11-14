@@ -77,11 +77,11 @@ def test_holding_place_delete_and_settings():
     with TestClient(app) as client:
         locs = client.get("/api/locations").json()
         holding = next(l for l in locs if l["holding"])
-        assert holding["name"] == "New arrivals"
+        assert holding["name"] == "Needs a Home"
 
         # "Decide later" lands in the holding place, never nowhere
         r = client.post("/api/bottles", json={"producer": "Dup", "quantity": 4}).json()
-        assert client.get(f"/api/bottle/{r['codes'][0]}").json()["location"] == "New arrivals"
+        assert client.get(f"/api/bottle/{r['codes'][0]}").json()["location"] == "Needs a Home"
         assert client.get(f"/api/bottle/{r['codes'][0]}").json()["siblings_in_cellar"] == 4
 
         # delete one, then the rest
