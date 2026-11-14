@@ -152,8 +152,9 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .cell.dragsrc .slot.dragging{opacity:.25}
 .fridge .rack.tiers{display:block;padding:6px 4px 12px}
 .fridge .tier{display:flex;justify-content:space-evenly;position:relative}
-.fridge .tier.offset{padding:0 calc(var(--s) * .55)}
-.fridge .tier.back{margin-bottom:calc(var(--s) * -.30);z-index:1}
+.fridge .tier.grid{display:grid;grid-template-columns:repeat(calc(var(--n) * 2 + 1), 1fr);justify-items:center}
+.fridge .tier.grid .cell.flat{grid-row:1}
+.fridge .tier.back{margin-bottom:2px;z-index:1}
 .fridge .tier:not(.back){z-index:2}
 .fridge .cell.flat{height:var(--s);width:var(--s)}
 .fridge .cell.flat .slot{bottom:0;opacity:1;transform:none}
@@ -223,7 +224,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.19.1';
+const APP_VERSION = '0.19.2';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -886,11 +887,12 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
         const face = d % 2 === 0 ? front : (front === 'neck' ? 'base' : 'neck');
         const where = r.deep > 1 ? (d === 0 ? 'front' : d === 1 ? 'back' : 'far back') : '';
         const aria = `Rack ${r.name}, spot ${i}${where ? ' ' + where : ''}: ${b ? b.label : 'empty'}`;
-        spots.push(`<div class="cell flat" data-rack="${esc(r.name)}" data-pos="${i}" data-depth="${d}" data-deep="${r.deep}" role="button" aria-label="${esc(aria)}" title="${esc(aria)}" onclick="spotTapped('${esc(r.name)}',${i},${r.deep},${d},${placing ? 'true' : 'false'})"><div class="slot d${d} ${face} ${b ? 'filled' : ''} ${b && b.color === 'sparkling' ? 'fizz' : ''} ${hit ? 'hit' : ''}" data-slot="${id}" ${b ? `data-code="${esc(b.code)}"` : ''} style="${b ? `--bc:${shadeFor(b)}` : ''}">${b && b.score >= 90 ? '<span class="star">★</span>' : ''}</div></div>`);
+        const col = r.deep > 1 ? `grid-column:${2 * i + (d % 2)}` : '';
+        spots.push(`<div class="cell flat" style="${col}" data-rack="${esc(r.name)}" data-pos="${i}" data-depth="${d}" data-deep="${r.deep}" role="button" aria-label="${esc(aria)}" title="${esc(aria)}" onclick="spotTapped('${esc(r.name)}',${i},${r.deep},${d},${placing ? 'true' : 'false'})"><div class="slot d${d} ${face} ${b ? 'filled' : ''} ${b && b.color === 'sparkling' ? 'fizz' : ''} ${hit ? 'hit' : ''}" data-slot="${id}" ${b ? `data-code="${esc(b.code)}"` : ''} style="${b ? `--bc:${shadeFor(b)}` : ''}">${b && b.score >= 90 ? '<span class="star">★</span>' : ''}</div></div>`);
       }
-      tiers.push(`<div class="tier ${d % 2 ? 'offset' : ''} ${d > 0 ? 'back' : ''}">${spots.join('')}</div>`);
+      tiers.push(`<div class="tier ${r.deep > 1 ? 'grid' : ''} ${d > 0 ? 'back' : ''}">${spots.join('')}</div>`);
     }
-    return zoneHdr + `<div class="rack tiers ${isHit ? 'hit' : ''}" data-rack="${esc(r.name)}" style="--s:clamp(30px, calc((min(100vw, 420px) - 76px) / ${r.across} - ${r.deep > 1 ? 14 : 8}px), 46px)"><span class="lbl">${esc(r.name)}</span>${tiers.join('')}</div>`;
+    return zoneHdr + `<div class="rack tiers ${isHit ? 'hit' : ''}" data-rack="${esc(r.name)}" style="--n:${r.across};--s:${r.deep > 1 ? `clamp(26px, calc((min(100vw, 420px) - 76px) * 2 / ${2 * r.across + 1} - 6px), 46px)` : `clamp(30px, calc((min(100vw, 420px) - 76px) / ${r.across} - 8px), 46px)`}"><span class="lbl">${esc(r.name)}</span>${tiers.join('')}</div>`;
   });
   const used = loc.bottles.length, cap = loc.capacity || 0;
   const hintSeen = Number(localStorage.getItem('sc_fridge_hint') || 0);
