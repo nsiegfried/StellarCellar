@@ -145,6 +145,19 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .cell .slot.d2{bottom:calc(var(--peek) * 2);z-index:1;transform:scale(.74);opacity:.65}
 .fridge .cell .slot.hit{opacity:1;z-index:5}
 .fridge .cell:active .slot.d0{filter:brightness(1.35)}
+.fridge .slot.filled.base{background:radial-gradient(circle at 50% 50%,rgba(0,0,0,.38) 0 17%,rgba(255,255,255,.10) 18% 21%,transparent 22%),radial-gradient(circle at 35% 35%,#fff3 0,#0000 40%),var(--bc,#7b1e3a)}
+.fridge .slot.filled.neck{background:radial-gradient(circle at 50% 50%,#d9cdb2 0 13%,#7d6f55 14% 17%,rgba(0,0,0,.28) 18% 34%,transparent 35%),radial-gradient(circle at 40% 38%,#fff2 0,#0000 45%),var(--bc,#7b1e3a)}
+.fridge .cell .slot.d0.neck{transform:scale(.84) translateY(-3px)}
+.fridge .slot.neck:not(.filled){transform:scale(.84) translateY(-3px)}
+.fridge .cell.dragsrc .slot.dragging{opacity:.25}
+.fridge .cell.droptarget{outline:3px dashed var(--gold);outline-offset:3px;border-radius:50%}
+#dragGhost{position:fixed;z-index:200;width:44px;height:44px;border-radius:50%;pointer-events:none;transform:translate(-50%,-60%) scale(1.15);box-shadow:0 8px 20px rgba(0,0,0,.45);background:radial-gradient(circle at 35% 35%,#fff4 0,#0000 40%),var(--bc,#7b1e3a)}
+.orient{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:-2px 0 6px}
+.orient button.ob{width:40px;height:40px;min-height:0;padding:0;border-radius:50%;border:2px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center}
+.orient button.ob i{display:block;border-radius:50%;background:var(--wine)}
+.orient button.ob.B i{width:26px;height:26px;box-shadow:inset 0 0 0 7px #7b1e3a,inset 0 0 0 9px #3d0c24}
+.orient button.ob.N i{width:12px;height:12px;background:#b8a57e;box-shadow:0 0 0 5px #7b1e3a}
+.orient .mini{min-height:34px;padding:4px 10px;font-size:var(--fs-sub)}
 .fridge .rack.cols .lbl{left:2px;top:auto;bottom:1px;background:none;color:#6b5634;font-size:13px;padding:0 4px;z-index:6}
 .fridge .slot.tap:active{filter:brightness(1.4)}
 .fridge .zone{color:#e9d9c3;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.85;margin:10px 2px 2px;display:flex;align-items:center;gap:8px}
@@ -198,7 +211,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.18.4';
+const APP_VERSION = '0.19.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -855,19 +868,21 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
       for (let d = r.deep - 1; d >= 0; d--) {
         const id = slotId(r.name, i, d), b = byslot[id];
         const hit = hitBottle && b && b.code === hitBottle.code;
-        layers.push(`<div class="slot d${d} ${b ? 'filled' : ''} ${b && (b.color === 'sparkling') ? 'fizz' : ''} ${hit ? 'hit' : ''}" style="${b ? `--bc:${shadeFor(b)}` : ''}">${b && b.score >= 90 && d === 0 ? '<span class="star">★</span>' : ''}</div>`);
+        const front = ((r.orient || '')[i - 1] || 'B') === 'N' ? 'neck' : 'base';
+        const face = d % 2 === 0 ? front : (front === 'neck' ? 'base' : 'neck');
+        layers.push(`<div class="slot d${d} ${face} ${b ? 'filled' : ''} ${b && (b.color === 'sparkling') ? 'fizz' : ''} ${hit ? 'hit' : ''}" data-slot="${id}" ${b ? `data-code="${esc(b.code)}"` : ''} style="${b ? `--bc:${shadeFor(b)}` : ''}">${b && b.score >= 90 && d === 0 ? '<span class="star">★</span>' : ''}</div>`);
       }
       const names = [];
       for (let d = 0; d < r.deep; d++) { const b = byslot[slotId(r.name, i, d)]; names.push(b ? b.label : 'empty'); }
       const aria = `Rack ${r.name}, position ${i}: ` + (r.deep > 1 ? `front ${names[0]}, back ${names.slice(1).join(', ')}` : names[0]);
-      cells.push(`<div class="cell" style="--deep:${r.deep}" role="button" aria-label="${esc(aria)}" onclick="cellTapped('${esc(r.name)}',${i},${r.deep},${placing ? 'true' : 'false'})"><span class="sr" hidden>${esc(aria)}</span>${layers.join('')}</div>`);
+      cells.push(`<div class="cell" data-rack="${esc(r.name)}" data-pos="${i}" data-deep="${r.deep}" style="--deep:${r.deep}" role="button" aria-label="${esc(aria)}" onclick="cellTapped('${esc(r.name)}',${i},${r.deep},${placing ? 'true' : 'false'})"><span class="sr" hidden>${esc(aria)}</span>${layers.join('')}</div>`);
     }
     return zoneHdr + `<div class="rack cols ${isHit ? 'hit' : ''}" data-rack="${esc(r.name)}" style="--s:clamp(28px, calc((min(100vw, 420px) - 76px) / ${r.across} - 8px), 46px);--peek:13px"><span class="lbl">${esc(r.name)}</span>${cells.join('')}</div>`;
   });
   const used = loc.bottles.length, cap = loc.capacity || 0;
   const hintSeen = Number(localStorage.getItem('sc_fridge_hint') || 0);
   if (!placing && hintSeen < 3) localStorage.setItem('sc_fridge_hint', hintSeen + 1);
-  const hint = !placing && hintSeen < 3 ? '<p class="sub" style="text-align:center;margin:-2px 0 8px">Tap a bottle for details, or an empty spot to add one.</p>' : '';
+  const hint = !placing && hintSeen < 3 ? '<p class="sub" style="text-align:center;margin:-2px 0 8px">Tap a bottle for details or an empty spot to add one. Hold a bottle and drag to move it.</p>' : '';
   const ramp = cols => cols.map(c => `<i style="background:${c};margin-right:1px"></i>`).join('');
   return `<div class="legend"><span>${ramp(['#a8323e','#8c2335','#741b37','#561431','#3d0c24'])} Red, light to inky</span><span>${ramp(['#ece6ad','#e5d58a','#dcbc5e','#c88c2c'])} White, pale to amber</span><span><i style="background:#e99aa1"></i>Rosé</span><span><i style="background:#e6d48c;box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 3px #c9a227"></i>Sparkling</span><span>★ 90+</span></div>${hint}
     <div class="fridge" id="fridge">
@@ -876,8 +891,81 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
       <div class="door" onclick="document.getElementById('fridge').classList.add('open')"><div class="glass"></div><div class="handle"></div><div class="name">${esc(loc.name)}</div><div class="hint">Tap to open</div></div>
     </div>`;
 }
+// ---------- drag and drop on the fridge: hold a bottle, drag, drop on another spot (swap if taken) ----------
+function enableFridgeDrag(locCode){
+  const inner = document.querySelector('#fridge .inner'); if (!inner) return;
+  let st = null;   // {cell, layer, code, from, x, y, timer, dragging, ghost, target}
+  const filledLayer = cell => cell.querySelector('.slot.d0.filled') || cell.querySelector('.slot.filled');
+  const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el ? el.closest('#fridge .cell') : null; };
+  const start = (target, x, y) => {
+    const cell = target.closest('.cell'); if (!cell) return;
+    const layer = filledLayer(cell); if (!layer) return;
+    st = {cell, layer, code: layer.dataset.code, from: layer.dataset.slot, x, y, dragging: false, target: null};
+    st.timer = setTimeout(() => begin(x, y), 280);
+  };
+  const begin = (x, y) => {
+    if (!st) return;
+    st.dragging = true;
+    st.cell.classList.add('dragsrc'); st.layer.classList.add('dragging');
+    const g = document.createElement('div'); g.id = 'dragGhost'; g.style.setProperty('--bc', getComputedStyle(st.layer).getPropertyValue('--bc'));
+    g.style.left = x + 'px'; g.style.top = y + 'px'; document.body.appendChild(g); st.ghost = g;
+    try { navigator.vibrate && navigator.vibrate(15); } catch (_) {}
+  };
+  const move = (x, y, ev) => {
+    if (!st) return;
+    if (!st.dragging) { if (Math.hypot(x - st.x, y - st.y) > 10) { clearTimeout(st.timer); st = null; } return; }
+    if (ev && ev.cancelable) ev.preventDefault();
+    st.ghost.style.left = x + 'px'; st.ghost.style.top = y + 'px';
+    const c = cellAt(x, y);
+    if (st.target && st.target !== c) st.target.classList.remove('droptarget');
+    st.target = c && c !== st.cell ? c : null;
+    if (st.target) st.target.classList.add('droptarget');
+    if (y < 70) window.scrollBy(0, -12); else if (y > innerHeight - 90) window.scrollBy(0, 12);
+  };
+  const end = async () => {
+    if (!st) return;
+    clearTimeout(st.timer);
+    const s = st; st = null;
+    if (!s.dragging) return;
+    window.__dragEnded = Date.now();
+    s.ghost && s.ghost.remove(); s.cell.classList.remove('dragsrc'); s.layer.classList.remove('dragging');
+    if (!s.target) return;
+    s.target.classList.remove('droptarget');
+    const depth = Number(s.from.match(/-\d+([ABC]?)$/)[1] ? 'ABC'.indexOf(s.from.slice(-1)) : 0);
+    const tDeep = Number(s.target.dataset.deep);
+    const to = slotId(s.target.dataset.rack, Number(s.target.dataset.pos), Math.min(depth, tDeep - 1));
+    await dragDrop(locCode, s.code, s.from, to);
+  };
+  inner.addEventListener('touchstart', e => { if (e.touches.length === 1) start(e.target, e.touches[0].clientX, e.touches[0].clientY); }, {passive: true});
+  inner.addEventListener('touchmove', e => move(e.touches[0].clientX, e.touches[0].clientY, e), {passive: false});
+  inner.addEventListener('touchend', end); inner.addEventListener('touchcancel', () => { if (st) { st.dragging = false; end(); } });
+  inner.addEventListener('mousedown', e => { if (e.button === 0) start(e.target, e.clientX, e.clientY); });
+  // one set of window-level mouse handlers, replaced each time the fridge is drawn
+  if (window.__dragMM) { window.removeEventListener('mousemove', window.__dragMM); window.removeEventListener('mouseup', window.__dragMU); }
+  window.__dragMM = e => move(e.clientX, e.clientY, e); window.__dragMU = end;
+  window.addEventListener('mousemove', window.__dragMM); window.addEventListener('mouseup', window.__dragMU);
+  inner.addEventListener('contextmenu', e => { if (st && st.dragging) e.preventDefault(); });
+}
+async function dragDrop(locCode, code, from, to){
+  const slots = window.__fridgeSlots || {};
+  const occupant = slots[to];
+  const label = (slots[from] || {}).label || 'Bottle';
+  try {
+    await api(`bottle/${code}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot: to})});
+    if (occupant && occupant.code !== code) await api(`bottle/${occupant.code}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot: from})});
+    const undo = async () => {
+      await api(`bottle/${code}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot: from})});
+      if (occupant && occupant.code !== code) await api(`bottle/${occupant.code}/slot`, {method:'POST', body: JSON.stringify({location_code: locCode, slot: to})});
+      route();
+    };
+    toast(occupant ? `Swapped ${from} and ${to}.` : `${label} moved to ${to}.`, 'Undo', undo);
+    route();
+  } catch (e) { toast(e.message); route(); }
+}
+
 // One tap target per column. Placing: pick front/back when the rack is two deep. Browsing: open the bottle, or choose if two.
 async function cellTapped(rack, pos, deep, placing){
+  if (window.__dragEnded && Date.now() - window.__dragEnded < 450) return;
   const slots = window.__fridgeSlots || {};
   const layers = Array.from({length: deep}, (_, d) => ({d, id: slotId(rack, pos, d), b: slots[slotId(rack, pos, d)]}));
   if (placing) {
@@ -1201,13 +1289,24 @@ async function editLayout(code){
       <div><label>Deep</label><input type="number" min="1" max="3" value="${r.deep}" onchange="__lay.racks[${i}].deep=Number(this.value)"></div>
       ${zones.length ? `<div><label>Zone</label><select onchange="__lay.racks[${i}].zone=Number(this.value)">${zones.map((z,zi) => `<option value="${zi}" ${(r.zone||0)===zi?'selected':''}>${esc(z)}</option>`).join('')}</select></div>` : ''}
       <button class="ghost" style="margin-bottom:12px" onclick="__lay.racks.splice(${i},1);editLayout('${code}')">✕</button></div>
+      ${r.bulk ? '' : `<div class="sub" style="margin:-4px 0 4px">Front row, as you face the fridge (tap a bottle to flip it):</div>
+      <div class="orient">${Array.from({length: r.across}, (_, p) => { const o = ((r.orient || '')[p] || 'B'); return `<button class="ob ${o}" title="${o === 'N' ? 'Neck toward the door' : 'Base toward the door'}" onclick="flipBottle(${i},${p},'${code}')"><i></i></button>`; }).join('')}
+        <button class="ghost mini" onclick="orientRack(${i},'alt','${code}')">Alternate</button><button class="ghost mini" onclick="orientRack(${i},'flip','${code}')">Flip rack</button></div>`}
       <label style="display:flex;align-items:center;gap:8px;margin:-6px 0 10px"><input type="checkbox" style="width:auto;min-height:0;margin:0" ${r.bulk?'checked':''} onchange="__lay.racks[${i}].bulk=this.checked">Bulk area (bottles stacked, no slots; Across = how many it holds)</label>`;
-  view.innerHTML = `<p class="sub">Racks top to bottom. Across is bottles side by side; Deep is rows front to back. Capacity: <b>${lay.racks.reduce((a,r)=>a+r.across*(r.bulk?1:r.deep),0)}</b></p>
+  view.innerHTML = `<p class="sub">Racks top to bottom. Across is bottles side by side; Deep is rows front to back. Big circle = base toward the door, small = neck toward the door; the back row sits the opposite way. Capacity: <b>${lay.racks.reduce((a,r)=>a+r.across*(r.bulk?1:r.deep),0)}</b></p>
     <div class="card"><label>Zones (optional, e.g. Upper, Lower; comma separated)</label><input value="${esc(zones.join(', '))}" onchange="__lay.zones=this.value.split(',').map(s=>s.trim()).filter(Boolean);editLayout('${code}')"></div>
     <div class="card">${lay.racks.map(row).join('')}
     <button class="ghost" style="width:100%" onclick="__lay.racks.push({name:String.fromCharCode(65+__lay.racks.length),across:5,deep:2,zone:(__lay.racks.at(-1)||{}).zone||0});editLayout('${code}')">Add a rack</button></div>
     <button class="big" onclick="saveLayout('${code}')">Save layout</button>
     <div class="grid2" style="margin-top:10px"><button class="ghost" onclick="window.__lay=null;editLayout('${code}')">Start over</button>${l.layout ? `<button class="danger" onclick="clearLayout('${code}')">Remove layout</button>` : '<span></span>'}</div>`;
+}
+function rackOrient(i){ const r = window.__lay.racks[i]; return ((r.orient || '').padEnd(r.across, 'B')).slice(0, r.across).split(''); }
+function flipBottle(i, p, code){ const o = rackOrient(i); o[p] = o[p] === 'N' ? 'B' : 'N'; window.__lay.racks[i].orient = o.join(''); editLayout(code); }
+function orientRack(i, how, code){
+  const o = rackOrient(i);
+  window.__lay.racks[i].orient = how === 'flip' ? o.map(c => c === 'N' ? 'B' : 'N').join('')
+    : o.map((_, p) => ((p % 2 === 0) === (o[0] !== 'N' ? true : false)) ? 'B' : 'N').join('');
+  editLayout(code);
 }
 function usePreset(code, id){ const p = window.__presets.find(x => x.id === id); window.__lay = {order:'top_down', zones: p.zones, racks: JSON.parse(JSON.stringify(p.racks))}; window.__layFor = code; editLayout(code); }
 function countMyFridge(code){
@@ -1263,6 +1362,7 @@ async function locationPage(code, mode, arg){
     ${l.code !== 'LNEWARR' ? `<button class="danger" style="width:100%;margin-top:10px" onclick="removePlace('${esc(code)}', ${l.bottles.length}, ${esc(JSON.stringify(l.name)).replace(/"/g, '&quot;')})">Remove ${esc(l.name)}</button>` : ''}
     <p class="sub" style="text-align:center;margin-top:8px">Place code ${esc(code)}</p>`}`;
   if (l.layout) openDoor(placing || highlight ? 200 : 450);
+  if (l.layout && !placing) enableFridgeDrag(code);
 }
 async function removePlace(code, count, name){
   const ok = await choose(`Remove ${name}?`, [{label: `Remove ${name}`, sub: count ? `Its ${count} bottle${count === 1 ? '' : 's'} move to Needs a Home so nothing is lost.` : 'It has no bottles. You can add the place again any time.', value: true}]);

@@ -213,8 +213,11 @@ def validate_layout(lay: dict) -> dict:
         zone = int(r.get("zone", 0) or 0)
         if zones and not 0 <= zone < len(zones):
             zone = 0
+        # Which way each front-row bottle faces: B = base toward the door, N = neck toward the door.
+        # Back-row bottles are the opposite (they nest). Missing or short patterns default to base out.
+        orient = "".join(c for c in str(r.get("orient") or "").upper() if c in "BN")[:across].ljust(across, "B")
         clean.append({"name": name, "across": across, "deep": deep, "zone": zone,
-                      "bulk": bool(r.get("bulk", False))})
+                      "bulk": bool(r.get("bulk", False)), "orient": orient})
     return {"order": lay.get("order", "top_down"), "zones": zones, "racks": clean}
 
 

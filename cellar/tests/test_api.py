@@ -318,3 +318,12 @@ def test_delete_location():
         assert client.get(f"/api/bottle/{b['codes'][0]}").json()["location_code"] == "LNEWARR"
         assert client.get(f"/api/location/{loc['code']}").status_code == 404
         assert client.delete("/api/location/LNEWARR").status_code == 400
+
+
+def test_rack_orientation_pattern():
+    with TestClient(app) as client:
+        loc = client.post("/api/locations", json={"name": "Orient Fridge"}).json()
+        lay = {"racks": [{"name": "A", "across": 5, "deep": 2, "orient": "bnb"}, {"name": "B", "across": 3, "deep": 2, "orient": "XNNNNNN"}]}
+        r = client.post(f"/api/location/{loc['code']}/layout", json={"kind": "fridge", "layout": lay}).json()
+        assert r["layout"]["racks"][0]["orient"] == "BNBBB"     # uppercased, padded with base-out
+        assert r["layout"]["racks"][1]["orient"] == "NNN"       # junk dropped, trimmed to across
