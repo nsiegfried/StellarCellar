@@ -1,5 +1,5 @@
 name: Stellar Cellar
-version: "0.19.2"
+version: "0.20.0"
 slug: stellar_cellar
 description: Wine cellar tracker with QR labels, drinking windows, price tiers, and Claude picks
 arch:
@@ -10,6 +10,7 @@ ingress_port: 8099
 panel_icon: mdi:bottle-wine
 panel_title: Stellar Cellar
 panel_admin: false
+homeassistant_api: true
 options:
   anthropic_api_key: ""
   claude_model: "claude-sonnet-5-5"
@@ -26,6 +27,12 @@ options:
   zebra_darkness: 20
   zebra_layout: "compact"
   zebra_qr_scale: 1.0
+  fridge_temp_entity: "sensor.wine_tt_mt_temperature"
+  fridge_humidity_entity: "sensor.wine_tt_mt_humidity"
+  fridge_temp_min: 45
+  fridge_temp_max: 65
+  fridge_humidity_min: 40
+  fridge_humidity_max: 80
 schema:
   anthropic_api_key: password
   claude_model: str
@@ -42,3 +49,9 @@ schema:
   zebra_darkness: int(0,30)?
   zebra_layout: list(compact|right_half)?
   zebra_qr_scale: float(0.3,1.0)?
+  fridge_temp_entity: str?
+  fridge_humidity_entity: str?
+  fridge_temp_min: float?
+  fridge_temp_max: float?
+  fridge_humidity_min: float?
+  fridge_humidity_max: float?

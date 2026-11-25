@@ -22,6 +22,15 @@ drinking windows, price tiers, and Claude recommendations from the bottles you o
 | zebra_dpi | 203 or 300, printed on the printer's label |
 | zebra_label_width_mm / height_mm | Your label stock, default 25.4 x 12.7 (1 x 0.5 inch) |
 | zebra_darkness | 0 to 30, raise if the QR prints faint |
+| fridge_temp_entity / fridge_humidity_entity | Home Assistant sensors shown on the fridge display (default the Wine TT-MT sensor) |
+| fridge_temp_min / max, fridge_humidity_min / max | Normal range for the green dot (default 45 to 65°F, 40 to 80%) |
+
+## Request a Sommelier
+Under the quick suggest box on Home. Four quick steps (what's on the table, what leads the
+flavor, occasion and budget), then one pairing from bottles that are ready and not held for
+anyone, with why it works, how to serve it, where it is, and two alternatives. The household
+is mostly vegetarian, so the dish list leads with vegetarian dishes. Requires the API key for
+the full pairing; without it you get a rule-based pick.
 
 ## Adding bottles by photo
 On the Add page (or the Scan page when a bottle has no QR yet), tap **Photo the

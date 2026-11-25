@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, delete as sql_delete, select
 
-from . import ai, importer, qr, regions, zebra
+from . import ai, climate, importer, qr, regions, zebra
 from .db import get_session, init_db
 from .logic import build_picks, effective_price, window_status
 from .models import Bottle, Consumption, DrinkingWindow, Location, Setting, Tasting, Wine, WishItem, utcnow
@@ -129,6 +129,7 @@ def candidate(session: Session, b: Bottle) -> dict:
         "price": effective_price(b.est_value, b.purchase_price),
         "special": wine.special_occasion,
         "color": wine.color,
+        "region": wine.region or "",
         "window_from": win.drink_from if win else None,
         "window_to": win.drink_to if win else None,
         "location": loc.name if loc else "Unplaced",
@@ -408,6 +409,44 @@ def recommend(body: RecommendBody, session: Session = Depends(get_session)):
     if body.budget_max is not None:
         cands = [c for c in cands if c["price"] is None or c["price"] <= body.budget_max]
     return ai.recommend(body.food, body.occasion, cands, get_setting(session, "taste_profile"))
+
+
+class SommelierBody(BaseModel):
+    dish: str = ""
+    details: str = ""
+    flavor: str = ""
+    occasion: str = ""
+    budget_max: Optional[float] = None
+    steer: str = ""
+    exclude: List[str] = []
+    image: Optional[str] = None
+    media_type: str = "image/jpeg"
+
+
+@app.post("/api/sommelier")
+def sommelier(body: SommelierBody, session: Session = Depends(get_session)):
+    """Request a Sommelier: one pairing from bottles that are ready and not held for anyone."""
+    if not (body.dish.strip() or body.details.strip() or body.image):
+        raise HTTPException(400, "Tell the sommelier what's on the table")
+    if body.image and (body.media_type not in ("image/jpeg", "image/png", "image/webp") or len(body.image) > 9_000_000):
+        raise HTTPException(400, "Send a JPEG, PNG or WebP photo under 6 MB")
+    cands = [c for c in (candidate(session, b) for b in in_cellar(session))
+             if c["status"] in ("ready", "drink_soon") and not c["reserved_for"]]
+    if body.budget_max is not None:
+        cands = [c for c in cands if c["price"] is None or c["price"] <= body.budget_max]
+    # one entry per wine, keeping the bottle that's easiest to reach (in a spot first)
+    best = {}
+    for c in sorted(cands, key=lambda c: (not c["slot"], c["location_code"] == HOLDING_CODE)):
+        best.setdefault(c["label"], c)
+    fresh = [c for c in best.values() if c["code"] not in body.exclude]   # "steer" asks for a different bottle
+    if fresh:
+        best = {c["label"]: c for c in fresh}
+    request = body.model_dump(exclude={"image", "media_type"})
+    out, err = ai.sommelier(request, list(best.values()), get_setting(session, "taste_profile"),
+                            (body.image, body.media_type) if body.image else None)
+    if err:
+        raise HTTPException(503 if "couldn't" in err or "isn't" in err else 400, err)
+    return out
 
 
 @app.post("/api/scan-label")
@@ -928,7 +967,24 @@ def home(session: Session = Depends(get_session)):
     fridge = (laid or other or [None])[0]
     return {"rate": rate, "arrivals": arrivals, "holding_code": HOLDING_CODE,
             "incoming": len(incoming), "drink_soon": soon, "ready": ready, "total": len(cands),
-            "fridge": fridge}
+            "fridge": fridge, "climate": climate.read() if fridge else None}
+
+
+def climate_place_code(session: Session) -> Optional[str]:
+    """The fridge sensor belongs to the laid-out place with the most bottles (the same one Home shows)."""
+    best, best_n = None, -1
+    for loc in session.exec(select(Location)).all():
+        if not loc.layout or loc.code == HOLDING_CODE:
+            continue
+        n = len(session.exec(select(Bottle).where(Bottle.location_id == loc.id, Bottle.status == "in_cellar")).all())
+        if n > best_n:
+            best, best_n = loc.code, n
+    return best
+
+
+@app.get("/api/climate")
+def fridge_climate():
+    return climate.read(use_cache=False) or {"available": False}
 
 
 class WineListBody(BaseModel):
@@ -1298,8 +1354,11 @@ def location_detail(code: str, session: Session = Depends(get_session)):
     bottles = session.exec(
         select(Bottle).where(Bottle.location_id == loc.id, Bottle.status == "in_cellar")
     ).all()
-    return {"code": loc.code, "name": loc.name, "kind": loc.kind, "layout": parse_layout(loc),
-            "capacity": layout_capacity(loc), "bottles": [candidate(session, b) for b in bottles]}
+    out = {"code": loc.code, "name": loc.name, "kind": loc.kind, "layout": parse_layout(loc),
+           "capacity": layout_capacity(loc), "bottles": [candidate(session, b) for b in bottles]}
+    if out["layout"] and climate_place_code(session) == loc.code:
+        out["climate"] = climate.read()
+    return out
 
 
 # ---------- printable labels ----------

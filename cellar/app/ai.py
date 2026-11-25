@@ -273,3 +273,76 @@ def suggest_windows(wines):
         except (KeyError, TypeError, ValueError):
             continue
     return out, None
+
+
+SOMM_SYSTEM = (
+    "You are the household's sommelier, pairing a bottle from their own cellar with tonight's food. "
+    "The household is mostly vegetarian, so expect vegetable, grain, cheese and egg dishes, and pair on sauce, "
+    "fat, acid, spice and earthiness rather than meat. Choose ONLY from the candidate list, by code; never invent "
+    "wines or codes. Prefer bottles marked drink_soon when they fit, and weigh the household's taste profile and "
+    "household_score (their own 100-point ratings). If a photo is attached, it shows the plate or the recipe. "
+    "Respond with JSON only, no prose and no code fences, in this shape: "
+    '{"pick": {"code": "", "why": "two sentences in a warm sommelier voice, under 45 words, about why this '
+    'wine works with this dish", "open": "how far ahead to open or decant, under 6 words", "serve": "serving '
+    'temperature in Fahrenheit, like 55 to 60\\u00b0F"}, "also": [{"code": "", "note": "under 10 words: how it '
+    'differs, e.g. lighter and cheaper"}], "dish": "the dish in under 6 words", "poor_fit": false, '
+    '"advice": "only if poor_fit: under 25 words on what style to buy instead"}. '
+    "Give at most two in also, each a different code from the pick. Set poor_fit true when nothing on the list "
+    "suits the dish, and still give the closest pick."
+)
+
+STEER = {"fuller": "They asked for something fuller-bodied than before.",
+         "white": "They asked to try a white (or rose or sparkling) if one fits.",
+         "lighter": "They asked for something lighter than before."}
+
+
+def sommelier(request: dict, cands, taste_profile: str = "", image=None):
+    """request: {dish, details, flavor, occasion, budget_max, steer, exclude}. Returns (result, error)."""
+    if not cands:
+        return None, "Nothing ready in your cellar fits that budget. Try Any budget."
+    by_code = {c["code"]: c for c in cands}
+    client = _client()
+    if not client:
+        top = sorted(cands, key=lambda c: (c["status"] != "drink_soon", -(c.get("score") or 0)))
+        return {"pick": {**_somm_card(top[0]), "why": "Ready to drink now and one of the household's favourites.",
+                         "open": "", "serve": ""},
+                "also": [{**_somm_card(c), "note": ""} for c in top[1:3]], "dish": request.get("dish", ""),
+                "poor_fit": False, "advice": "", "source": "rules"}, None
+    listing = [{"code": c["code"], "label": c["label"], "color": c["color"], "region": c.get("region", ""),
+                "price": c["price"], "status": c["status"], "household_score": c.get("score")} for c in cands[:80]]
+    ask = {k: request.get(k) for k in ("dish", "details", "flavor", "occasion", "budget_max")}
+    note = STEER.get(request.get("steer") or "", "")
+    if request.get("exclude"):
+        note += " Do not choose these codes again: " + ", ".join(request["exclude"][:10]) + "."
+    system = SOMM_SYSTEM + (" Taste profile: " + taste_profile[:3000] if taste_profile else "")
+    content = [{"type": "text", "text": json.dumps({"tonight": ask, "request": note.strip(), "candidates": listing})}]
+    if image:
+        content.insert(0, {"type": "image", "source": {"type": "base64", "media_type": image[1], "data": image[0]}})
+    try:
+        resp = client.messages.create(model=os.environ.get("CELLAR_MODEL", "claude-sonnet-5-5"), max_tokens=2500,
+                                      system=system, messages=[{"role": "user", "content": content}])
+        data = _json_reply("".join(getattr(b, "text", "") for b in resp.content))
+    except Exception as exc:
+        return None, f"The sommelier couldn't answer ({type(exc).__name__}). Try again."
+    pick = data.get("pick") or {}
+    chosen = by_code.get(pick.get("code"))
+    if not chosen:
+        return None, "The sommelier picked something that isn't in your cellar. Try again."
+    clean = lambda s, n: str(s or "")[:n]
+    also, seen = [], {chosen["code"]}
+    for a in (data.get("also") or []):
+        c = by_code.get(a.get("code"))
+        if c and c["code"] not in seen:
+            seen.add(c["code"])
+            also.append({**_somm_card(c), "note": clean(a.get("note"), 80)})
+        if len(also) == 2:
+            break
+    return {"pick": {**_somm_card(chosen), "why": clean(pick.get("why"), 320), "open": clean(pick.get("open"), 40),
+                     "serve": clean(pick.get("serve"), 30)},
+            "also": also, "dish": clean(data.get("dish"), 60), "poor_fit": bool(data.get("poor_fit")),
+            "advice": clean(data.get("advice"), 200), "source": "claude"}, None
+
+
+def _somm_card(c):
+    keep = ("code", "label", "color", "region", "price", "score", "taster", "location", "slot", "location_code", "status")
+    return {k: c.get(k) for k in keep}

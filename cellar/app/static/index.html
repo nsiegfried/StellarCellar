@@ -128,6 +128,29 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 .fridge .ctrl{margin:10px 2px 4px;height:26px;border-radius:5px;background:linear-gradient(180deg,#2a2a2c,#111);display:flex;align-items:center;justify-content:space-between;padding:0 10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
 .fridge .ctrl span{color:#9fd8ff;font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.1em;text-shadow:0 0 6px rgba(159,216,255,.8)}
 .fridge .ctrl b{color:#e9e9e9;font-size:10px;letter-spacing:.02em;font-weight:600;opacity:.85}
+.fridge .ctrl b.clim{display:flex;align-items:center;gap:8px;color:#9fd8ff;font-family:ui-monospace,monospace;font-size:12px;letter-spacing:.08em;font-weight:600;opacity:1;text-shadow:0 0 6px rgba(159,216,255,.8)}
+.cdot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none;vertical-align:1px;background:var(--grey)}
+.cdot.ok{background:#3fbf5a;box-shadow:0 0 8px rgba(63,191,90,.9)}.cdot.warn{background:#f0a020;box-shadow:0 0 8px rgba(240,160,32,.9)}
+.card .cdot.ok{background:var(--ok);box-shadow:none}.card .cdot.warn{background:var(--warn);box-shadow:none}
+.linkrow{width:100%;display:flex;align-items:center;gap:12px;background:none;color:var(--ink);border:0;border-top:1px solid var(--line);border-radius:0;margin-top:12px;padding:12px 2px 2px;text-align:left;font-weight:400;min-height:52px}
+.linkrow svg{width:22px;height:22px;stroke:var(--wine);flex:none}
+.somm .bar{height:4px;background:var(--line);border-radius:2px;margin:2px 0 18px}.somm .bar i{display:block;height:4px;background:var(--wine);border-radius:2px}
+.somm .eyebrow{font-size:var(--fs-badge);letter-spacing:.14em;text-transform:uppercase;color:var(--wine);font-weight:700}
+.somm h1{font-size:calc(var(--fs-title) * 1.25);margin:4px 0;line-height:1.15}
+.somm .voice{font-family:Georgia,"Times New Roman",serif;font-style:italic;color:var(--muted);margin:0 0 6px}
+.somm .split{display:grid;gap:14px;grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "main" "form"}
+.somm .head{grid-area:head}.somm .main{grid-area:main}.somm .form{grid-area:form}
+.dishes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dish{background:var(--card);color:var(--ink);border:1.5px solid var(--line);border-radius:14px;min-height:74px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-weight:500;font-size:var(--fs-sub)}
+.dish svg,.opt svg{width:24px;height:24px;fill:none;stroke:var(--wine);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.dish.on,.opt.on{background:var(--wine);color:#fff;border-color:var(--wine)}.dish.on svg,.opt.on svg{stroke:#fff}
+.dish.dim{background:transparent;border-style:dashed;color:var(--muted)}.dish.dim svg{stroke:var(--muted)}
+.opt{width:100%;display:flex;align-items:center;gap:14px;text-align:left;background:var(--card);color:var(--ink);border:1.5px solid var(--line);border-radius:14px;padding:12px 16px;margin-bottom:10px;font-weight:400;min-height:64px}
+.opt b{display:block;font-weight:600}.opt .sub{display:block}.opt.on .sub{color:rgba(255,255,255,.85)}
+.somm .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin:12px 0}
+.somm .facts div{background:var(--bg);border-radius:10px;padding:8px 10px;font-size:var(--fs-sub)}
+.somm .swatch{width:14px;height:54px;border-radius:7px 7px 4px 4px;flex:none}
+.somm .why{font-family:Georgia,"Times New Roman",serif;font-style:italic;font-size:calc(var(--fs) * 1.02);margin:6px 0 0}
 .fridge .rack.hit{outline:3px solid var(--gold);outline-offset:2px;border-radius:8px;animation:glow 1.4s ease-in-out infinite}
 @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(184,134,11,.0)}50%{box-shadow:0 0 18px 4px rgba(184,134,11,.55)}}
 .fridge .rack .lbl{position:absolute;left:-2px;top:-6px;background:#8a5a35;color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:0 6px 6px 0}
@@ -201,6 +224,10 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
   main{max-width:1100px;padding-bottom:30px}
   #top{max-width:1100px}
   .two{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}
+  .somm .split{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);grid-template-areas:"head main" "form main";column-gap:32px;align-items:start}
+  .somm .pair{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:24px;align-items:start}
+  .dishes{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .dish{min-height:92px}
   .two > div{min-width:0}
   nav a.scan.hidewide{display:none}
 }
@@ -224,7 +251,7 @@ video{width:100%;height:52vh;object-fit:cover;display:block}
 <script src="static/jsQR.js"></script>
 <script>
 // ---------- core helpers (all URLs relative, so the app works under HA Ingress) ----------
-const APP_VERSION = '0.19.2';
+const APP_VERSION = '0.20.0';
 const api = async (path, opts={}) => {
   const r = await fetch('api/' + path, {headers:{'Content-Type':'application/json'}, ...opts});
   if (r.status === 401 || r.status === 403) { const err = new Error('session'); err.session = true; throw err; }
@@ -396,12 +423,13 @@ async function tonight(){
       <div class="chips">${[['Any budget',null],['Under ' + money(p.thresholds.low,CUR), p.thresholds.low],['Under ' + money(p.thresholds.high,CUR), p.thresholds.high]].map(([l,v]) => `<button class="chip ${sugg.budget===v?'on':''}" onclick="setBudget(${v===null?'null':v}, this)">${l}</button>`).join('')}</div>
       <div class="chips">${['Weeknight','Guests','Special'].map(o => `<button class="chip ${sugg.occasion===o?'on':''}" onclick="setOcc('${o}', this)">${o}</button>`).join('')}</div>
       <button class="big" id="suggestBtn" onclick="recommend()">Suggest something else</button>
-      <div id="recs"></div></div>`;
+      <div id="recs"></div>
+      <button class="linkrow" onclick="startSomm()"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8l-.6 6.2a3.4 3.4 0 0 1-6.8 0z"/><path d="M12 12.6V20"/><path d="M8.5 20.5h7"/></svg><span class="col"><b style="color:var(--wine);display:block">Request a Sommelier</b><span class="sub">A full pairing, step by step</span></span><span class="sub">›</span></button></div>`;
   const actions = panel ? `<button class="ghost" style="width:100%;margin:4px 0 12px" onclick="location.hash='#/add'">＋ Add a bottle</button>` : `<div class="grid3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px">
       <button class="ghost" onclick="location.hash='#/scan'">📷<br><span style="font-size:var(--fs-sub)">Scan</span></button>
       <button class="ghost" onclick="location.hash='#/add'">＋<br><span style="font-size:var(--fs-sub)">Add a bottle</span></button>
       <button class="ghost" onclick="location.hash='#/out'">🏷️<br><span style="font-size:var(--fs-sub)">Check a bottle</span></button></div>`;
-  const glance = h.fridge ? `<div class="card tap row" onclick="location.hash='#/location/${esc(h.fridge.code)}'"><div class="col"><div class="title">${esc(h.fridge.name)}</div><div class="meta"><span>${h.fridge.count}${h.fridge.capacity ? ' of ' + h.fridge.capacity : ''} bottles</span><span>${h.fridge.ready} ready</span>${h.drink_soon ? `<span>${h.drink_soon} drink soon</span>` : ''}</div></div><span class="sub">›</span></div>` : '';
+  const glance = h.fridge ? `<div class="card tap row" onclick="location.hash='#/location/${esc(h.fridge.code)}'"><div class="col"><div class="title">${esc(h.fridge.name)}</div><div class="meta"><span>${h.fridge.count}${h.fridge.capacity ? ' of ' + h.fridge.capacity : ''} bottles</span><span>${h.fridge.ready} ready</span>${h.drink_soon ? `<span>${h.drink_soon} drink soon</span>` : ''}</div>${climateLine(h.climate)}</div><span class="sub">›</span></div>` : '';
   const budgets = `<h2>By budget</h2>
     ${section('Under ' + money(p.thresholds.low,CUR), p.under_low, 'No priced bottles in this range are ready.')}
     ${section('Under ' + money(p.thresholds.high,CUR), p.under_high, 'No priced bottles in this range are ready.')}
@@ -460,7 +488,7 @@ function wineListPage(){
     <h2>Fine-tune</h2>
     <div class="card">
       <div class="chips" id="wlBudget">${budgets.map(([l, v]) => `<button class="chip ${WL.budget === v ? 'on' : ''}" onclick="WL.budget=${v === null ? 'null' : v};localStorage.setItem('sc_wl_budget', ${v === null ? "''" : v});runWineList()">${l}</button>`).join('')}</div>
-      <div class="chips">${['Steak','Fish','Pasta','Chicken','Pizza','Cheese'].map(f => `<button class="chip ${WL.food === f ? 'on' : ''}" onclick="WL.food=WL.food==='${f}'?'':'${f}';runWineList()">${f}</button>`).join('')}</div>
+      <div class="chips">${['Pasta','Pizza','Mushrooms','Curry','Mexican','Cheese'].map(f => `<button class="chip ${WL.food === f ? 'on' : ''}" onclick="WL.food=WL.food==='${f}'?'':'${f}';runWineList()">${f}</button>`).join('')}</div>
       <input id="wlFood" placeholder="Or type the dish" value="${esc(WL.food)}" onchange="WL.food=this.value;runWineList()">
     </div>
     <input type="file" id="wlLib2" accept="image/*" style="display:none" onchange="startWineList(this.files[0])">
@@ -516,6 +544,115 @@ async function recommend(){
       recs.innerHTML = `<p>${esc(r.summary)}</p>` + r.picks.map(bottleRow).join('') + (r.source === 'rules' ? '<div class="sub">Rule-based picks (no API key set or Claude unavailable).</div>' : '');
     } catch (e) { recs.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   });
+}
+
+// ---------- Request a Sommelier: dish, flavor, occasion and budget, then one pairing from the cellar ----------
+const SOMM_DISHES = [
+  ['Pasta','<path d="M3 12h18a9 6 0 0 1-18 0z"/><path d="M8 9c1-3 3-3 4 0s3 3 4 0"/>'],
+  ['Risotto','<path d="M3 11h18a9 8 0 0 1-18 0z"/><circle cx="9" cy="8" r=".9"/><circle cx="12" cy="7" r=".9"/><circle cx="15" cy="8" r=".9"/><circle cx="10.5" cy="9.5" r=".9"/><circle cx="13.5" cy="9.5" r=".9"/>'],
+  ['Pizza','<path d="M12 3l9 17H3z"/><circle cx="11" cy="13" r="1.2"/><circle cx="13.5" cy="16.5" r="1.2"/>'],
+  ['Mushrooms','<path d="M3 12a9 7 0 0 1 18 0z"/><path d="M10 12v6a2 2 0 0 0 4 0v-6"/>'],
+  ['Mexican','<path d="M3 15a9 7 0 0 1 18 0z"/><path d="M3 15h18"/><path d="M8 11l1 1M12 10v1.5M16 11l-1 1"/>'],
+  ['Curry','<path d="M3 13h18a9 7 0 0 1-18 0z"/><path d="M9 10c0-2 2-2 2-4M13 10c0-2 2-2 2-4"/>'],
+  ['Stir-fry','<path d="M2 11h16a8 7 0 0 1-16 0z"/><path d="M18 12l4-2"/><path d="M7 8l2-4M11 8l2-4"/>'],
+  ['Salad','<path d="M3 13h18a9 7 0 0 1-18 0z"/><path d="M8 13c0-4 3-7 7-7 0 4-3 7-7 7z"/>'],
+  ['Roast veg','<path d="M5 19c3-1 9-7 11-11l-3-3c-4 2-10 8-11 11z"/><path d="M16 8l3-3M14 5l2-2M19 10l2-2"/>'],
+  ['Cheese','<path d="M3 17l9-11 9 11z"/><circle cx="10" cy="14" r="1.2"/><circle cx="14" cy="12" r=".9"/>'],
+  ['Dessert','<path d="M5 11h14l-2 9H7z"/><path d="M8 11a4 4 0 0 1 8 0"/><path d="M12 4v3"/>'],
+  ['Meat or fish','<path d="M3 12c3-4 8-5 13-3l5-3-1 6 1 6-5-3c-5 2-10 1-13-3z"/><circle cx="8" cy="11" r=".8"/>'],
+];
+const SOMM_FLAVORS = [
+  ['Earthy and savory','Mushrooms, truffle, roasted roots','<path d="M3 12a9 7 0 0 1 18 0z"/><path d="M10 12v6a2 2 0 0 0 4 0v-6"/>'],
+  ['Creamy or cheesy','Cream, butter, parmesan, gratin','<path d="M5 12h14a7 6 0 0 1-14 0z"/><path d="M9 9c0-2 2-2 2-4M13 9c0-2 2-2 2-4"/>'],
+  ['Tomato-based','Marinara, eggplant parm, shakshuka','<circle cx="12" cy="13" r="7"/><path d="M12 6c0-2 2-3 3-3"/>'],
+  ['Fresh, green and herby','Pesto, lemon, greens, goat cheese','<path d="M5 19C5 10 10 5 19 5c0 9-5 14-14 14z"/><path d="M5 19L14 10"/>'],
+  ['Spicy','Chile heat, curry, gochujang','<path d="M7 18c6 2 12-3 11-10"/><path d="M18 8c1-2 0-4-2-4"/><path d="M7 18c-2-1-3-3-2-5 2 0 4 1 5 3"/>'],
+  ['Grilled and smoky','Charred veg, halloumi, smoked paprika','<path d="M12 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 0-7z"/><path d="M5 21h14"/>'],
+];
+const SOMM_OCCASIONS = [
+  ['Weeknight','Something good, nothing precious','<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'],
+  ['Guests over','A bottle worth talking about','<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><path d="M15 15c3 0 6 1.5 6 5"/>'],
+  ['Celebration','Open something special','<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>'],
+];
+const sommSvg = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+let SOMM = null;
+function sommReset(){ SOMM = {dish:'', details:'', flavor:'', occasion:'Weeknight', budget:null, image:null, steer:'', seen:[], result:null, error:''}; }
+function startSomm(){ sommReset(); location.hash = '#/somm'; }
+const sommAbout = () => [SOMM.dish, SOMM.details].filter(Boolean).join(' · ') || (SOMM.image ? 'From your photo' : '');
+const sommBar = n => `<div class="bar" role="progressbar" aria-valuemin="1" aria-valuemax="4" aria-valuenow="${n}" aria-label="Step ${n} of 4"><i style="width:${n * 25}%"></i></div>`;
+async function sommPhoto(file){ if (!file) return; SOMM.image = await downsize(file, 1600); toast('Photo added.'); sommPage(1); }
+function sommNext1(){
+  SOMM.details = (document.getElementById('sdish')?.value || '').trim();
+  if (!SOMM.dish && !SOMM.details && !SOMM.image) { toast('Pick a dish or describe it first.'); return; }
+  location.hash = '#/somm/2';
+}
+function sommDish(name){ SOMM.details = (document.getElementById('sdish')?.value || '').trim(); SOMM.dish = SOMM.dish === name ? '' : name; if (SOMM.dish) location.hash = '#/somm/2'; else sommPage(1); }
+function sommFlavor(name){ SOMM.flavor = name; location.hash = '#/somm/3'; }
+function sommPour(){ SOMM.result = null; SOMM.error = ''; SOMM.steer = ''; SOMM.seen = []; location.hash = '#/somm/4'; }
+function sommSteer(way){ if (SOMM.result) SOMM.seen.push(SOMM.result.pick.code); SOMM.steer = way; SOMM.result = null; SOMM.error = ''; sommPage(4); }
+function sommStartOver(){ sommReset(); replaceHash('#/somm'); }
+async function sommPage(arg){
+  if (!SOMM) sommReset();
+  const step = Math.min(4, Math.max(1, Number(arg) || 1));
+  if (step > 1 && !SOMM.dish && !SOMM.details && !SOMM.image) { replaceHash('#/somm'); return; }
+  topbar('Request a Sommelier', {back: step === 1 ? '#/tonight' : step === 2 ? '#/somm' : '#/somm/' + (step - 1), noGear: true});
+  const about = sommAbout();
+  if (step === 1) {
+    const panel = isPanel();
+    view.innerHTML = `<div class="somm">${sommBar(1)}<div class="split">
+      <div class="head"><h1>What's on the table?</h1><p class="voice">The sommelier starts with the plate.</p></div>
+      <div class="main dishes">${SOMM_DISHES.map(([n, d]) => `<button class="dish ${SOMM.dish === n ? 'on' : ''} ${n === 'Meat or fish' ? 'dim' : ''}" aria-pressed="${SOMM.dish === n}" onclick="sommDish('${n}')">${sommSvg(d)}${n}</button>`).join('')}</div>
+      <div class="form"><label for="sdish">Or describe it</label><input id="sdish" value="${esc(SOMM.details)}" placeholder="Mushroom risotto with parmesan" autocomplete="off" onkeydown="if(event.key==='Enter')sommNext1()">
+        ${panel ? '' : `<input type="file" id="sphoto" accept="image/*" capture="environment" style="display:none" onchange="sommPhoto(this.files[0])"><button class="ghost" style="width:100%;margin-bottom:12px" onclick="sphoto.click()">📷 ${SOMM.image ? 'Photo added. Retake' : 'Photograph the plate or recipe'}</button>`}
+        <button class="big" onclick="sommNext1()">Next</button></div></div></div>`;
+    return;
+  }
+  if (step === 2) {
+    view.innerHTML = `<div class="somm">${sommBar(2)}<div class="split">
+      <div class="head"><div class="eyebrow">${esc(about)}</div><h1>What leads the flavor?</h1><p class="voice">The sauce and the spice set the wine.</p></div>
+      <div class="main">${SOMM_FLAVORS.map(([n, sub, d]) => `<button class="opt ${SOMM.flavor === n ? 'on' : ''}" aria-pressed="${SOMM.flavor === n}" onclick="sommFlavor('${n}')">${sommSvg(d)}<span><b>${n}</b><span class="sub">${sub}</span></span></button>`).join('')}</div>
+      <div class="form"><button class="ghost" style="width:100%" onclick="SOMM.flavor='';location.hash='#/somm/3'">Not sure, skip this</button></div></div></div>`;
+    return;
+  }
+  if (step === 3) {
+    const t = (await api('picks')).thresholds; CUR = CUR || 'USD';
+    const budgets = [['Any', null], ['Under ' + money(t.low, CUR), t.low], ['Under ' + money(t.high, CUR), t.high]];
+    view.innerHTML = `<div class="somm">${sommBar(3)}<div class="split">
+      <div class="head"><div class="eyebrow">${esc([about, SOMM.flavor].filter(Boolean).join(' · '))}</div><h1>What's the occasion?</h1><p class="voice">So we know which shelf to reach for.</p></div>
+      <div class="main"><div role="group" aria-label="Occasion">${SOMM_OCCASIONS.map(([n, sub, d]) => `<button class="opt ${SOMM.occasion === n ? 'on' : ''}" aria-pressed="${SOMM.occasion === n}" onclick="SOMM.occasion='${n}';sommPage(3)">${sommSvg(d)}<span><b>${n}</b><span class="sub">${sub}</span></span></button>`).join('')}</div>
+        <label>Budget</label><div class="chips" role="group" aria-label="Budget">${budgets.map(([l, v]) => `<button class="chip ${SOMM.budget === v ? 'on' : ''}" aria-pressed="${SOMM.budget === v}" onclick="SOMM.budget=${v === null ? 'null' : v};sommPage(3)">${l}</button>`).join('')}</div></div>
+      <div class="form"><button class="big" onclick="sommPour()">🍷 Pour my pairing</button><p class="sub" style="text-align:center">Chooses from bottles that are ready and not held for anyone.</p></div></div></div>`;
+    return;
+  }
+  // step 4: the pairing
+  const ctx = [SOMM.dish || SOMM.details || 'Tonight', SOMM.occasion, SOMM.budget ? 'under ' + money(SOMM.budget, CUR || 'USD') : ''].filter(Boolean).join(' · ');
+  if (!SOMM.result) {
+    view.innerHTML = `<div class="somm"><div class="eyebrow">${esc(ctx)}</div><h1>The Sommelier recommends</h1><div class="card empty">${SOMM.error ? esc(SOMM.error) + '<br><br><button class="ghost" onclick="SOMM.error=\'\';sommPage(4)">Try again</button>' : 'The sommelier is choosing…'}</div></div>`;
+    if (SOMM.error) return;
+    try {
+      SOMM.result = await api('sommelier', {method: 'POST', body: JSON.stringify({dish: SOMM.dish, details: SOMM.details, flavor: SOMM.flavor, occasion: SOMM.occasion, budget_max: SOMM.budget, steer: SOMM.steer, exclude: SOMM.seen, image: SOMM.image, media_type: 'image/jpeg'})});
+    } catch (e) { if (e.session) throw e; SOMM.error = e.message; }
+    if (location.hash === '#/somm/4') sommPage(4);
+    return;
+  }
+  const r = SOMM.result, p = r.pick;
+  const where = p.location ? esc(p.location) + (p.slot ? ' · ' + esc(p.slot) : '') : 'Not placed';
+  const facts = [p.open ? `<div><b>Open</b><br>${esc(p.open)}</div>` : '', p.serve ? `<div><b>Serve</b><br>${esc(p.serve)}</div>` : '', `<div><b>Where</b><br>${where}</div>`].join('');
+  const meta = [p.region, p.price != null ? money(p.price, CUR || 'USD') : ''].filter(Boolean).map(esc).join(' · ');
+  view.innerHTML = `<div class="somm"><div class="eyebrow">${esc(ctx)}</div><h1>The Sommelier recommends</h1>
+    <div class="pair"><div class="card" style="padding:18px">
+      <div class="row" style="align-items:flex-start"><i class="swatch" style="background:${shadeFor(p)}"></i><div class="col"><div class="title" style="font-size:var(--fs-title);white-space:normal;line-height:1.2">${esc(p.label)}</div><div class="sub" style="margin-top:4px">${meta}</div></div>${p.score != null ? `<span class="score sv">${p.taster ? esc(p.taster) + ' ' : ''}${p.score}</span>` : ''}</div>
+      ${r.poor_fit ? `<p class="sub" style="color:var(--warn);margin:10px 0 0">Nothing in the cellar is a perfect match. ${esc(r.advice)}</p>` : ''}
+      ${p.why ? `<div class="eyebrow" style="margin-top:14px">Why it works</div><p class="why">${esc(p.why)}</p>` : ''}
+      <div class="facts">${facts}</div>
+      <div class="grid2"><button class="ghost" onclick="${p.location_code ? `location.hash='#/location/${esc(p.location_code)}/find/${esc(p.code)}'` : `location.hash='#/bottle/${esc(p.code)}'`}">Show me where</button><button onclick="location.hash='#/bottle/${esc(p.code)}'">Open this</button></div>
+    </div><div>
+      ${r.also.length ? `<h2 style="margin-top:4px">Also consider</h2>` + r.also.map(a => `<div class="card tap row" onclick="location.hash='#/bottle/${esc(a.code)}'"><div class="col"><div class="title" style="white-space:normal">${esc(a.label)}</div><div class="sub">${[a.price != null ? money(a.price, CUR || 'USD') : '', a.note].filter(Boolean).map(esc).join(' · ')}</div></div><span class="sub">›</span></div>`).join('') : ''}
+      <p class="sub" style="margin:16px 0 6px">Not quite right? Steer the sommelier</p>
+      <div class="chips"><button class="chip" onclick="sommSteer('fuller')">Fuller</button><button class="chip" onclick="sommSteer('lighter')">Lighter</button><button class="chip" onclick="sommSteer('white')">Try a white</button></div>
+      <button class="ghost" style="width:100%" onclick="sommStartOver()">Start over</button>
+      ${r.source === 'rules' ? '<p class="sub">Rule-based pick (no API key set or Claude unavailable).</p>' : ''}
+    </div></div></div>`;
 }
 
 // ---------- status lists ----------
@@ -854,6 +991,17 @@ function shadeFor(b){
   return DEFAULT_SHADE[b.color] || DEFAULT_SHADE.red;
 }
 function slotId(rack, i, d){ return `${rack}-${i}${d === 0 ? '' : 'ABC'[d]}`; }
+// Fridge temperature and humidity from the Home Assistant sensor (green in range, amber outside it).
+function climateStrip(c){
+  if (!c || !c.available) return '';
+  const t = c.temp != null ? `${c.temp}${esc(c.unit)}` : '--', rh = c.humidity != null ? `${c.humidity}%RH` : '';
+  return `<b class="clim" title="${esc(c.message + ' · normal is ' + c.range)}" aria-label="${esc(`Fridge ${t}, ${c.humidity ?? '--'}% humidity. ${c.message}`)}"><i class="cdot ${esc(c.status)}"></i>${t}&nbsp;&nbsp;${rh}</b>`;
+}
+function climateLine(c){
+  if (!c || !c.available) return '';
+  const t = c.temp != null ? `<b>${c.temp}${esc(c.unit)}</b>` : '--', rh = c.humidity != null ? ` · <b>${c.humidity}%</b> humidity` : '';
+  return `<div class="meta" style="margin-top:6px;align-items:center"><span><i class="cdot ${esc(c.status)}"></i> ${t}${rh}</span>${c.status !== 'ok' ? `<span>${esc(c.message)}</span>` : ''}</div>`;
+}
 function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
   const lay = loc.layout; if (!lay) return '';
   const byslot = {}; loc.bottles.forEach(b => { if (b.slot) byslot[b.slot] = b; });
@@ -861,11 +1009,13 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
   const hitBottle = highlightCode ? loc.bottles.find(b => b.code === highlightCode) : null;
   const hitRack = hitBottle && hitBottle.slot ? hitBottle.slot.split('-')[0] : null;
   window.__fridgeSlots = byslot;
+  const clim = climateStrip(loc.climate);
+  const ctrl = `<div class="ctrl"><span>◦ ◦ ◦</span>${clim || `<b>${esc(loc.name)}</b>`}<span>◦ ◦ ◦</span></div>`;
   let lastZone = -1;
   const racks = lay.racks.map(r => {
     let zoneHdr = '';
     if (lay.zones && lay.zones.length && r.zone !== lastZone) {
-      zoneHdr = (lastZone >= 0 ? `<div class="ctrl"><span>◦ ◦ ◦</span><b>${esc(loc.name)}</b><span>◦ ◦ ◦</span></div>` : '') + `<div class="zone">${esc(lay.zones[r.zone] || '')}</div>`;
+      zoneHdr = (lastZone >= 0 ? ctrl : '') + `<div class="zone">${esc(lay.zones[r.zone] || '')}</div>`;
       lastZone = r.zone;
     }
     const isHit = hitRack === r.name;
@@ -901,7 +1051,7 @@ function renderFridge(loc, {highlightCode, placing, onSlot} = {}){
   const ramp = cols => cols.map(c => `<i style="background:${c};margin-right:1px"></i>`).join('');
   return `<div class="legend"><span>${ramp(['#a8323e','#8c2335','#741b37','#561431','#3d0c24'])} Red, light to inky</span><span>${ramp(['#ece6ad','#e5d58a','#dcbc5e','#c88c2c'])} White, pale to amber</span><span><i style="background:#e99aa1"></i>Rosé</span><span><i style="background:#e6d48c;box-shadow:inset 0 0 0 2px #fff,inset 0 0 0 3px #c9a227"></i>Sparkling</span><span>★ 90+</span></div>${hint}
     <div class="fridge" id="fridge">
-      <div class="body"><div class="inner">${racks.join('')}</div>
+      <div class="body"><div class="inner">${clim && !racks.some(x => x.includes('class="ctrl"')) ? ctrl : ''}${racks.join('')}</div>
         <div class="cap">${used} of ${cap} bottles${unplaced.length ? ` · ${unplaced.length} on a rack, slot unknown` : ''}${hitBottle && !hitBottle.slot ? ' · this bottle is in here, slot not recorded' : ''}${lay.racks.some(r => r.deep > 1 && !r.bulk) ? '<br><span style="opacity:.75">Two deep: back-row bottles sit in the gaps behind the front row, smaller.</span>' : ''}</div></div>
       <div class="door" onclick="document.getElementById('fridge').classList.add('open')"><div class="glass"></div><div class="handle"></div><div class="name">${esc(loc.name)}</div><div class="hint">Tap to open</div></div>
     </div>`;
@@ -1631,7 +1781,7 @@ async function saveSettings(){
 }
 
 // ---------- Router ----------
-const TAB_FOR = {windows:'cellar', out:'tonight', home:'tonight', map:'cellar', regions:'cellar', list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
+const TAB_FOR = {somm:'tonight', windows:'cellar', out:'tonight', home:'tonight', map:'cellar', regions:'cellar', list:'tonight', tonight:'tonight', cellar:'cellar', bottle:'cellar', edit:'cellar', held:'cellar', gifts:'cellar', location:'cellar', add:'cellar', scan:'scan', journal:'journal', settings:''};
 window.addEventListener('hashchange', () => {
   const s = window.__stack, cur = location.hash || '#/tonight';
   if (window.__replacing) { s[s.length - 1] = cur; window.__replacing = false; }
@@ -1659,6 +1809,7 @@ async function route(){
     else if (page === 'map') await mapPage(arg === 'r' ? location.hash.split('/').slice(3).join('/') : null);
     else if (page === 'regions') await regionsPage();
     else if (page === 'windows') await windowsPage();
+    else if (page === 'somm') await sommPage(arg);
     else if (page === 'out' && arg === 'list') wineListPage();
     else if (page === 'out') await outPage();
     else if (page === 'gifts') await giftsPage();
